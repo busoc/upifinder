@@ -213,8 +213,8 @@ func init() {
 	log.SetFlags(0)
 	log.SetOutput(os.Stdout)
 
-	cli.Version = "0.4.0"
-	cli.BuildTime = "2018-08-03 12:06:00"
+	cli.Version = "0.4.1"
+	cli.BuildTime = "2018-08-06 09:49:00"
 }
 
 func main() {
@@ -373,7 +373,7 @@ type timecoze struct {
 }
 
 type Node struct {
-	Name string `json:"name" xml:"name"`
+	Name   string   `json:"name" xml:"name"`
 	Values []string `json:"upis" xml:"upis"`
 }
 
@@ -469,15 +469,7 @@ func (h *History) StoreStatus(key string, ds []*Gap, when time.Time) error {
 			return err
 		}
 		for _, d := range ds {
-			b, err := b.CreateBucketIfNotExists([]byte(d.UPI))
-			if err != nil {
-				return err
-			}
-			var w bytes.Buffer
-			if err := json.NewEncoder(&w).Encode(d); err != nil {
-				return err
-			}
-			if err := b.Put(mmt, w.Bytes()); err != nil {
+			if err := storeReport(b, []byte(d.UPI), mmt, d); err != nil {
 				return err
 			}
 		}
@@ -496,20 +488,30 @@ func (h *History) StoreFiles(key string, ds map[string]*Coze, when time.Time) er
 			return err
 		}
 		for u, c := range ds {
-			b, err := b.CreateBucketIfNotExists([]byte(u))
-			if err != nil {
-				return err
-			}
-			var w bytes.Buffer
-			if err := json.NewEncoder(&w).Encode(c); err != nil {
-				return err
-			}
-			if err := b.Put(mmt, w.Bytes()); err != nil {
+			if err := storeReport(b, []byte(u), mmt, c); err != nil {
 				return err
 			}
 		}
 		return nil
 	})
+}
+
+func storeReport(b *bolt.Bucket, upi, mmt []byte, datum interface{}) error {
+	b, err := b.CreateBucketIfNotExists(upi)
+	if err != nil {
+		return err
+	}
+	bs, err := json.Marshal(datum)
+	if err != nil {
+		return err
+	}
+	k, v := b.Cursor().Last()
+	if bytes.Equal(v, bs) {
+		if err := b.Delete(k); err != nil {
+			return err
+		}
+	}
+	return b.Put(mmt, bs)
 }
 
 func viewNodes(hist *History) Handler {
