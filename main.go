@@ -16,6 +16,11 @@ const (
 	DefaultPeriod = 7
 )
 
+var (
+	UNIX = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
+	GPS  = time.Date(1980, 1, 6, 0, 0, 0, 0, time.UTC)
+)
+
 const helpText = `{{.Name}} scan the Hadock archive and produces report about
 its status such as:
 
@@ -46,7 +51,7 @@ func init() {
 	log.SetFlags(0)
 	log.SetOutput(os.Stdout)
 
-	cli.Version = "0.4.1"
+	cli.Version = "0.4.2"
 	cli.BuildTime = "2018-08-06 09:49:00"
 }
 

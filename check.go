@@ -16,7 +16,7 @@ import (
 )
 
 var checkCommand = &cli.Command{
-	Usage: "check [-a] [-d] [-s] [-e] [-u] [-i] [-f] <archive,...>",
+	Usage: "check [-a] [-d] [-s] [-e] [-u] [-i] [-f] [-g] <archive,...>",
 	Short: "provide the number of missing files in the archive",
 	Run:   runCheck,
 	Desc: `"check" traverse the Hadock archive to find missing files.
@@ -69,6 +69,7 @@ func runCheck(cmd *cli.Command, args []string) error {
 	period := cmd.Flag.Int("d", 0, "period")
 	interval := cmd.Flag.Duration("i", 0, "interval")
 	format := cmd.Flag.String("f", "", "format")
+	toGPS := cmd.Flag.Bool("g", false, "convert time to GPS")
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
 	}
@@ -87,7 +88,7 @@ func runCheck(cmd *cli.Command, args []string) error {
 	}
 	switch f := strings.ToLower(*format); f {
 	case "column":
-		count, delta := printCheckResults(os.Stdout, rs)
+		count, delta := printCheckResults(os.Stdout, rs, *toGPS)
 
 		log.Println()
 		log.Printf("%d missing files (%s)", count, delta)
@@ -98,10 +99,16 @@ func runCheck(cmd *cli.Command, args []string) error {
 		w := csv.NewWriter(os.Stdout)
 		defer w.Flush()
 		for _, g := range rs {
+			var starts, ends string
+			if *toGPS {
+				starts, ends = timeToGPS(g.Starts), timeToGPS(g.Ends)
+			} else {
+				starts, ends = g.Starts.Format(time.RFC3339), g.Ends.Format(time.RFC3339)
+			}
 			row := []string{
 				g.UPI,
-				g.Starts.Format(time.RFC3339),
-				g.Ends.Format(time.RFC3339),
+				starts,
+				ends,
 				g.Duration().String(),
 				strconv.FormatUint(uint64(g.Before), 10),
 				strconv.FormatUint(uint64(g.After), 10),
@@ -139,7 +146,7 @@ func checkFiles(files <-chan *File, interval time.Duration) []*Gap {
 	return rs
 }
 
-func printCheckResults(ws io.Writer, rs []*Gap) (uint64, time.Duration) {
+func printCheckResults(ws io.Writer, rs []*Gap, gps bool) (uint64, time.Duration) {
 	w := tabwriter.NewWriter(ws, 16, 2, 4, ' ', 0)
 	defer w.Flush()
 
@@ -156,7 +163,21 @@ func printCheckResults(ws io.Writer, rs []*Gap) (uint64, time.Duration) {
 
 		elapsed += delta
 		total += uint64(count)
-		logger.Printf("%-s\t%s\t%s\t%s\t%d\t%d\t%d", g.UPI, g.Starts, g.Ends, delta, g.Before, g.After, count)
+
+		var starts, ends string
+		if gps {
+			starts, ends = timeToGPS(g.Starts), timeToGPS(g.Ends)
+		} else {
+			starts, ends = g.Starts.Format(time.RFC3339), g.Ends.Format(time.RFC3339)
+		}
+		logger.Printf("%-s\t%s\t%s\t%s\t%d\t%d\t%d", g.UPI, starts, ends, delta, g.Before, g.After, count)
 	}
 	return total, elapsed
+}
+
+func timeToGPS(t time.Time) string {
+	left := t.Sub(UNIX).Seconds()
+	right := GPS.Sun(UNIX).Seconds()
+
+	return strconv.FormatFloat(left-right, 'f', 0, 64)
 }
