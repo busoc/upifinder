@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+	"log"
 
 	"github.com/boltdb/bolt"
 )
@@ -123,10 +124,12 @@ func (h *History) StoreStatus(key string, ds []*Gap, when time.Time) error {
 		}
 		mmt, err := when.MarshalText()
 		if err != nil {
+			log.Println("marshalling time failed for status report:", err)
 			return err
 		}
 		for _, d := range ds {
 			if err := storeReport(b, []byte(d.UPI), mmt, d); err != nil {
+				log.Printf("storing status report for %s failed: %s", d.UPI, err)
 				return err
 			}
 		}
@@ -142,10 +145,12 @@ func (h *History) StoreFiles(key string, ds map[string]*Coze, when time.Time) er
 		}
 		mmt, err := when.MarshalText()
 		if err != nil {
+			log.Println("marshalling time failed for files report:", err)
 			return err
 		}
 		for u, c := range ds {
 			if err := storeReport(b, []byte(u), mmt, c); err != nil {
+				log.Printf("storing files report for %s failed:", u, err)
 				return err
 			}
 		}

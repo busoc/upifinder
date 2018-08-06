@@ -93,7 +93,7 @@ func runCheck(cmd *cli.Command, args []string) error {
 		log.Println()
 		log.Printf("%d missing files (%s)", count, delta)
 	case "":
-		count, delta := printCheckResults(ioutil.Discard, rs)
+		count, delta := printCheckResults(ioutil.Discard, rs, *toGPS)
 		log.Printf("%d missing files (%s)", count, delta)
 	case "csv":
 		w := csv.NewWriter(os.Stdout)
@@ -177,7 +177,7 @@ func printCheckResults(ws io.Writer, rs []*Gap, gps bool) (uint64, time.Duration
 
 func timeToGPS(t time.Time) string {
 	left := t.Sub(UNIX).Seconds()
-	right := GPS.Sun(UNIX).Seconds()
+	right := GPS.Sub(UNIX).Seconds()
 
 	return strconv.FormatFloat(left-right, 'f', 0, 64)
 }
