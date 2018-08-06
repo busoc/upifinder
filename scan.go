@@ -12,12 +12,12 @@ import (
 )
 
 type File struct {
-	Path     string
-	Source   string
-	Info     string
-	Size     int64
-	Sequence uint32
-	AcqTime  time.Time
+	Path     string    `json:"-" xml:"-"`
+	Source   string    `json:"source" xml:"source"`
+	Info     string    `json:"upi" xml:"upi"`
+	Size     int64     `json:"size" xml:"size"`
+	Sequence uint32    `json:"sequence" xml:"sequence"`
+	AcqTime  time.Time `json:"dtstamp" xml:"dtstamp"`
 }
 
 func (f *File) Name() string {

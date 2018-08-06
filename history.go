@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"time"
 	"log"
+	"time"
 
 	"github.com/boltdb/bolt"
 )

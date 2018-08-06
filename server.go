@@ -34,6 +34,7 @@ func runServer(cmd *cli.Command, args []string) error {
 	c := struct {
 		Addr     string `toml:"address"`
 		Database string `toml:"database"`
+		Datadir  string `toml:"datadir"`
 	}{}
 	f, err := os.Open(cmd.Flag.Arg(0))
 	if err != nil {
@@ -55,6 +56,7 @@ func runServer(cmd *cli.Command, args []string) error {
 	hist := &History{db}
 
 	r := mux.NewRouter()
+	r.Handle("/{instance}/{type}/{mode}/archives/", negociateStructured(listFiles(c.Datadir))).HeadersRegexp("Accept", "application/(xml|json)").Methods(http.MethodGet)
 	r.Handle("/", negociateStructured(viewNodes(hist))).HeadersRegexp("Accept", "application/(xml|json)").Methods(http.MethodGet)
 	r.Handle("/{instance}/{type}/{mode}/{report}/", negociateStructured(viewReports(hist))).HeadersRegexp("Accept", "application/(xml|json)").Methods(http.MethodGet)
 	// r.Handle("/{instance}/{type}/{mode}/{report}/{UPI}", negociateStructured(viewReport(hist))).HeadersRegexp("Accept", "application/(xml|json)").Methods(http.MethodGet)
@@ -66,6 +68,34 @@ func runServer(cmd *cli.Command, args []string) error {
 		return http.ListenAndServe(c.Addr, handlers.CORS()(h))
 	}
 	return http.ListenAndServe(c.Addr, r)
+}
+
+func listFiles(datadir string) Handler {
+	f := func(r *http.Request) (interface{}, error) {
+		c := struct {
+			Starts time.Time
+			Ends   time.Time
+		}{}
+		var err error
+		q := r.URL.Query()
+		if c.Starts, err = time.Parse(time.RFC3339, q.Get("dtstart")); err != nil {
+			return nil, err
+		}
+		if c.Ends, err = time.Parse(time.RFC3339, q.Get("dtend")); err != nil {
+			return nil, err
+		}
+
+		paths, err := listPaths([]string{datadir}, 0, c.Starts, c.Ends)
+		if err != nil {
+			return nil, err
+		}
+		var ds []*File
+		for f := range walkFiles(paths, q.Get("upi"), 8, true) {
+			ds = append(ds, f)
+		}
+		return ds, nil
+	}
+	return f
 }
 
 func viewNodes(hist *History) Handler {
