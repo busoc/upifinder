@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -41,7 +40,7 @@ Options:
 -s START   only count files created after START
 -e END     only count files created before END
 -d DAYS    only count files created during a period of DAYS
--f FORMAT  print the results in the given format ("", csv, column, summary, json)
+-f FORMAT  print the results in the given format ("", csv, column)
 -m         merge all count files of UPI
 
 Examples:
@@ -122,12 +121,12 @@ func runWalk(cmd *cli.Command, args []string) error {
 		return nil
 	}
 	switch f := strings.ToLower(*format); f {
-	case "", "column":
+	case "column":
 		z := printWalkResults(os.Stdout, rs)
 
 		log.Println()
 		log.Printf("%d files found (%dMB) - uniq: %d - corrupted: %d (%3.2f%%)", z.Count, z.Size>>20, z.Uniq, z.Invalid, z.Corrupted())
-	case "summary":
+	case "":
 		z := printWalkResults(ioutil.Discard, rs)
 		log.Printf("%d files found (%dMB) - uniq: %d - corrupted: %d (%3.2f%%)", z.Count, z.Size>>20, z.Uniq, z.Invalid, z.Corrupted())
 	case "csv":
@@ -146,18 +145,6 @@ func runWalk(cmd *cli.Command, args []string) error {
 				return err
 			}
 		}
-	case "json":
-		c := struct {
-			When     time.Time        `json:"dtstamp"`
-			Paths    []string         `json:"dirs"`
-			Counters map[string]*Coze `json:"status"`
-		}{
-			When:     time.Now(),
-			Paths:    paths,
-			Counters: rs,
-		}
-		return json.NewEncoder(os.Stdout).Encode(c)
-	// case "xml":
 	default:
 		return fmt.Errorf("unsupported format: %s", *format)
 	}

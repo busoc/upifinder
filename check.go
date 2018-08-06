@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -41,7 +40,7 @@ Options:
 -e END     only count files created before END
 -d DAYS    only count files created during a period of DAYS
 -i TIME    only consider gap with at least TIME duration
--f FORMAT  print the results in the given format ("", csv, column, summary, json)
+-f FORMAT  print the results in the given format ("", csv, column)
 -a         print the ACQTIME instead of the VMU time`,
 }
 
@@ -87,12 +86,12 @@ func runCheck(cmd *cli.Command, args []string) error {
 		return nil
 	}
 	switch f := strings.ToLower(*format); f {
-	case "", "column":
+	case "column":
 		count, delta := printCheckResults(os.Stdout, rs)
 
 		log.Println()
 		log.Printf("%d missing files (%s)", count, delta)
-	case "summary":
+	case "":
 		count, delta := printCheckResults(ioutil.Discard, rs)
 		log.Printf("%d missing files (%s)", count, delta)
 	case "csv":
@@ -112,27 +111,6 @@ func runCheck(cmd *cli.Command, args []string) error {
 				return err
 			}
 		}
-	case "json":
-		c := struct {
-			When    time.Time         `json:"dtstamp"`
-			Paths   []string          `json:"dirs"`
-			Count   int               `json:"count"`
-			Gaps    map[string][]*Gap `json:"gaps"`
-			Missing uint64            `json:"missing"`
-			Elapsed time.Duration     `json:"duration"`
-		}{
-			When:  time.Now(),
-			Paths: paths,
-			Count: len(rs),
-			Gaps:  make(map[string][]*Gap),
-		}
-		for _, g := range rs {
-			c.Gaps[g.UPI] = append(c.Gaps[g.UPI], g)
-			c.Elapsed += g.Duration()
-			c.Missing += uint64(g.Count())
-		}
-		return json.NewEncoder(os.Stdout).Encode(c)
-	// case "xml":
 	default:
 		return fmt.Errorf("unsupported format: %s", *format)
 	}
