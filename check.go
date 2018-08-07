@@ -27,21 +27,22 @@ found into the Hadock archive in the given period.
 The period of time is selected by upifinder with the following rules (depending
 of the value given to the command line):
 
-* [s] + [e] : walk from START to END date
-* [s] + [d] : walk from START to START + DAYS date
-* [e] + [d] : walk from END - DAYS to END date
-* [d]       : walk from TODAY - DAYS to TODAY
-* default   : walk recursively on the given path(s)
+  * [s] + [e] : walk from START to END date
+  * [s] + [d] : walk from START to START + DAYS date
+  * [e] + [d] : walk from END - DAYS to END date
+  * [d]       : walk from TODAY - DAYS to TODAY
+  * default   : walk recursively on the given path(s)
 
 Options:
 
--u UPI     only count files for the given UPI
--s START   only count files created after START
--e END     only count files created before END
--d DAYS    only count files created during a period of DAYS
--i TIME    only consider gap with at least TIME duration
--f FORMAT  print the results in the given format ("", csv, column)
--a         print the ACQTIME instead of the VMU time`,
+  -u UPI     only count files for the given UPI
+  -s START   only count files created after START
+  -e END     only count files created before END
+  -d DAYS    only count files created during a period of DAYS
+  -i TIME    only consider gap with at least TIME duration
+  -f FORMAT  print the results in the given format ("", csv, column)
+  -a         print the ACQTIME instead of the VMU time
+  -g         print the ACQTIME as seconds elapsed since GPS epoch (-a should be set)`,
 }
 
 type Gap struct {
@@ -88,7 +89,7 @@ func runCheck(cmd *cli.Command, args []string) error {
 	}
 	switch f := strings.ToLower(*format); f {
 	case "column":
-		count, delta := printCheckResults(os.Stdout, rs, *toGPS)
+		count, delta := printCheckResults(os.Stdout, rs, *toGPS && *acqtime)
 
 		log.Println()
 		log.Printf("%d missing files (%s)", count, delta)
@@ -100,7 +101,7 @@ func runCheck(cmd *cli.Command, args []string) error {
 		defer w.Flush()
 		for _, g := range rs {
 			var starts, ends string
-			if *toGPS {
+			if *toGPS && *acqtime {
 				starts, ends = timeToGPS(g.Starts), timeToGPS(g.Ends)
 			} else {
 				starts, ends = g.Starts.Format(time.RFC3339), g.Ends.Format(time.RFC3339)

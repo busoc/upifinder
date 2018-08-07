@@ -28,20 +28,20 @@ into the Hadock archive in the given period.
 The period of time is selected by upifinder with the following rules (depending
 of the value given to the command line):
 
-* [s] + [e] : walk from START to END date
-* [s] + [d] : walk from START to START + DAYS date
-* [e] + [d] : walk from END - DAYS to END date
-* [d]       : walk from TODAY - DAYS to TODAY
-* default   : walk recursively on the given path(s)
+  * [s] + [e] : walk from START to END date
+  * [s] + [d] : walk from START to START + DAYS date
+  * [e] + [d] : walk from END - DAYS to END date
+  * [d]       : walk from TODAY - DAYS to TODAY
+  * default   : walk recursively on the given path(s)
 
 Options:
 
--u UPI     only count files for the given UPI
--s START   only count files created after START
--e END     only count files created before END
--d DAYS    only count files created during a period of DAYS
--f FORMAT  print the results in the given format ("", csv, column)
--m         merge all count files of UPI
+  -u UPI     only count files for the given UPI
+  -s START   only count files created after START
+  -e END     only count files created before END
+  -d DAYS    only count files created during a period of DAYS
+  -f FORMAT  print the results in the given format ("", csv, column)
+  -m         merge all count files of UPI
 
 Examples:
 
