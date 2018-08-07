@@ -12,7 +12,7 @@ import (
 )
 
 type File struct {
-	Path     string    `json:"-" xml:"-"`
+	Path     string    `json:"path" xml:"path"`
 	Source   string    `json:"source" xml:"source"`
 	Info     string    `json:"upi" xml:"upi"`
 	Size     int64     `json:"size" xml:"size"`

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -85,12 +86,25 @@ func listFiles(datadir string) Handler {
 			return nil, err
 		}
 
-		paths, err := listPaths([]string{datadir}, 0, c.Starts, c.Ends)
+		vars := mux.Vars(r)
+		base := filepath.Join(datadir, vars["instance"], vars["type"], vars["mode"])
+		is, err := ioutil.ReadDir(base)
+		if err != nil {
+			return nil, err
+		}
+		dirs := make([]string, 0, len(is))
+		for _, i := range is {
+			if i.IsDir() {
+				dirs = append(dirs, filepath.Join(base, i.Name()))
+			}
+		}
+		paths, err := listPaths(dirs, 0, c.Starts, c.Ends)
 		if err != nil {
 			return nil, err
 		}
 		var ds []*File
 		for f := range walkFiles(paths, q.Get("upi"), 8, true) {
+			f.Path = filepath.Base(f.Path)
 			ds = append(ds, f)
 		}
 		return ds, nil
