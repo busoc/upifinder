@@ -54,7 +54,7 @@ func runPush(cmd *cli.Command, args []string) error {
 	})
 	group.Go(func() error {
 		//report gaps
-		rs := checkFilesByUPI(walkFiles(paths, "", 1, true), 0)
+		rs := checkFiles(walkFiles(paths, "", 1, true), 0, byUPI)
 		if len(rs) == 0 {
 			return nil
 		}

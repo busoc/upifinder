@@ -11,6 +11,16 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+type ByFunc func(f *File) string
+
+func byUPI(f *File) string {
+	return f.String()
+}
+
+func bySource(f *File) string {
+	return f.Source
+}
+
 type File struct {
 	Path     string    `json:"path" xml:"path"`
 	Source   string    `json:"source" xml:"source"`
