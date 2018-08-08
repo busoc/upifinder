@@ -15,11 +15,17 @@ import (
 	"github.com/midbel/cli"
 )
 
-var checkCommand = &cli.Command{
+var checkSourceCommand = &cli.Command{
+	Usage: "check-src [-a] [-d] [-s] [-e] [-c] [-i] [-f] [-g] <archive,...>",
+	Short: "provide the number of missing files in the archive by sources",
+	Run:   runCheckSource,
+}
+
+var checkUPICommand = &cli.Command{
 	Usage: "check [-a] [-d] [-s] [-e] [-u] [-i] [-f] [-g] <archive,...>",
-	Short: "provide the number of missing files in the archive",
-	Run:   runCheck,
-	Desc: `"check" traverse the Hadock archive to find missing files.
+	Short: "provide the number of missing files in the archive by UPI",
+	Run:   runCheckUPI,
+	Desc: `"check" traverse the Hadock archive to find missing files by UPI.
 
 If no UPI is given, "check" will collect the list of missing files for each UPI
 found into the Hadock archive in the given period.
@@ -61,7 +67,32 @@ func (g *Gap) Duration() time.Duration {
 	return g.Ends.Sub(g.Starts)
 }
 
-func runCheck(cmd *cli.Command, args []string) error {
+func runCheckSource(cmd *cli.Command, args []string) error {
+	var start, end When
+	cmd.Flag.Var(&start, "s", "start")
+	cmd.Flag.Var(&end, "e", "end")
+	acqtime := cmd.Flag.Bool("a", false, "acquisition time")
+	period := cmd.Flag.Int("d", 0, "period")
+	interval := cmd.Flag.Duration("i", 0, "interval")
+	format := cmd.Flag.String("f", "", "format")
+	toGPS := cmd.Flag.Bool("g", false, "convert time to GPS")
+	if err := cmd.Flag.Parse(args); err != nil {
+		return err
+	}
+
+	if cmd.Flag.NArg() == 0 {
+		cmd.Help()
+	}
+
+	paths, err := listPaths(cmd.Flag.Args(), *period, start.Time, end.Time)
+	if err != nil {
+		return err
+	}
+	rs := checkFilesBySources(walkFiles(paths, "", 1, *acqtime), *interval)
+	return reportCheckResults(rs, *format, *toGPS, *acqtime)
+}
+
+func runCheckUPI(cmd *cli.Command, args []string) error {
 	var start, end When
 	cmd.Flag.Var(&start, "s", "start")
 	cmd.Flag.Var(&end, "e", "end")
@@ -83,25 +114,29 @@ func runCheck(cmd *cli.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	rs := checkFiles(walkFiles(paths, *upi, 1, *acqtime), *interval)
+	rs := checkFilesByUPI(walkFiles(paths, *upi, 1, *acqtime), *interval)
+	return reportCheckResults(rs, *format, *toGPS, *acqtime)
+}
+
+func reportCheckResults(rs []*Gap, format string, toGPS, acqtime bool) error {
 	if len(rs) == 0 {
 		return nil
 	}
-	switch f := strings.ToLower(*format); f {
+	switch f := strings.ToLower(format); f {
 	case "column":
-		count, delta := printCheckResults(os.Stdout, rs, *toGPS && *acqtime)
+		count, delta := printCheckResults(os.Stdout, rs, toGPS && acqtime)
 
 		log.Println()
 		log.Printf("%d missing files (%s)", count, delta)
 	case "":
-		count, delta := printCheckResults(ioutil.Discard, rs, *toGPS)
+		count, delta := printCheckResults(ioutil.Discard, rs, toGPS)
 		log.Printf("%d missing files (%s)", count, delta)
 	case "csv":
 		w := csv.NewWriter(os.Stdout)
 		defer w.Flush()
 		for _, g := range rs {
 			var starts, ends string
-			if *toGPS && *acqtime {
+			if toGPS && acqtime {
 				starts, ends = timeToGPS(g.Starts), timeToGPS(g.Ends)
 			} else {
 				starts, ends = g.Starts.Format(time.RFC3339), g.Ends.Format(time.RFC3339)
@@ -120,12 +155,33 @@ func runCheck(cmd *cli.Command, args []string) error {
 			}
 		}
 	default:
-		return fmt.Errorf("unsupported format: %s", *format)
+		return fmt.Errorf("unsupported format: %s", format)
 	}
 	return nil
 }
 
-func checkFiles(files <-chan *File, interval time.Duration) []*Gap {
+func checkFilesBySources(files <-chan *File, interval time.Duration) []*Gap {
+	rs := make([]*Gap, 0, 1000)
+	cs := make(map[string]*File)
+	for f := range files {
+		if p, ok := cs[f.Source]; ok && f.Sequence > p.Sequence+1 {
+			g := Gap{
+				UPI:    f.Info,
+				Starts: p.AcqTime,
+				Ends:   f.AcqTime,
+				Before: p.Sequence,
+				After:  f.Sequence,
+			}
+			if interval == 0 || g.Duration() >= interval {
+				rs = append(rs, &g)
+			}
+		}
+		cs[f.Source] = f
+	}
+	return rs
+}
+
+func checkFilesByUPI(files <-chan *File, interval time.Duration) []*Gap {
 	rs := make([]*Gap, 0, 1000)
 	cs := make(map[string]*File)
 	for f := range files {

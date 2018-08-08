@@ -34,14 +34,15 @@ Usage:
 
 The commands are:
 
-{{range .Commands}}{{if .Runnable}}{{printf "  %-9s %s" .String .Short}}{{end}}
+{{range .Commands}}{{if .Runnable}}{{printf "  %-12s %s" .String .Short}}{{end}}
 {{end}}
 
 Use {{.Name}} [command] -h for more information about its usage.
 `
 
 var commands = []*cli.Command{
-	checkCommand,
+	checkUPICommand,
+	checkSourceCommand,
 	srvCommand,
 	walkCommand,
 	pushCommand,
@@ -51,8 +52,8 @@ func init() {
 	log.SetFlags(0)
 	log.SetOutput(os.Stdout)
 
-	cli.Version = "0.4.4"
-	cli.BuildTime = "2018-08-07 09:43:00"
+	cli.Version = "0.4.5"
+	cli.BuildTime = "2018-08-08 13:48:00"
 }
 
 func main() {
