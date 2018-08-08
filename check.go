@@ -4,7 +4,6 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"strconv"
@@ -16,16 +15,37 @@ import (
 )
 
 var checkSourceCommand = &cli.Command{
-	Usage: "check-src [-a] [-d] [-s] [-e] [-c] [-i] [-f] [-g] <archive,...>",
+	Usage: "check-src [-a] [-d] [-s] [-e] [-i] [-f] [-g] <archive,...>",
 	Short: "provide the number of missing files in the archive by sources",
 	Run:   runCheckSource,
+	Desc: `"check" traverse the Hadock archive to find gap(s) of files by sources.
+
+The period of time is selected by upifinder with the following rules (depending
+of the value given to the command line):
+
+  * [s] + [e] : walk from START to END date
+  * [s] + [d] : walk from START to START + DAYS date
+  * [e] + [d] : walk from END - DAYS to END date
+  * [d]       : walk from TODAY - DAYS to TODAY
+  * default   : walk recursively on the given path(s)
+
+Options:
+
+  -s START   only count files created after START
+  -e END     only count files created before END
+  -d DAYS    only count files created during a period of DAYS
+  -i TIME    only consider gap with at least TIME duration
+  -f FORMAT  print the results in the given format ("", csv, column)
+  -a         print the ACQTIME instead of the VMU time
+  -g         print the ACQTIME as seconds elapsed since GPS epoch (-a should be set)`,
 }
 
 var checkUPICommand = &cli.Command{
-	Usage: "check [-a] [-d] [-s] [-e] [-u] [-i] [-f] [-g] <archive,...>",
+	Usage: "check-upi [-a] [-d] [-s] [-e] [-u] [-i] [-f] [-g] <archive,...>",
+	Alias: []string{"check"},
 	Short: "provide the number of missing files in the archive by UPI",
 	Run:   runCheckUPI,
-	Desc: `"check" traverse the Hadock archive to find missing files by UPI.
+	Desc: `"check" traverse the Hadock archive to find gap(s) of files by UPI.
 
 If no UPI is given, "check" will collect the list of missing files for each UPI
 found into the Hadock archive in the given period.
@@ -125,7 +145,7 @@ func checkFiles(files <-chan *File, interval time.Duration, by ByFunc) []*Gap {
 		n := by(f)
 		if p, ok := cs[n]; ok && f.Sequence > p.Sequence+1 {
 			g := Gap{
-				UPI:    f.String(),
+				UPI:    p.String(),
 				Starts: p.AcqTime,
 				Ends:   f.AcqTime,
 				Before: p.Sequence,
@@ -145,13 +165,10 @@ func reportCheckResults(rs []*Gap, format string, toGPS, acqtime bool) error {
 		return nil
 	}
 	switch f := strings.ToLower(format); f {
-	case "column":
+	case "column", "":
 		count, delta := printCheckColumns(os.Stdout, rs, toGPS && acqtime)
 
 		log.Println()
-		log.Printf("%d missing files (%s)", count, delta)
-	case "":
-		count, delta := printCheckColumns(ioutil.Discard, rs, toGPS && acqtime)
 		log.Printf("%d missing files (%s)", count, delta)
 	case "csv":
 		return printCheckValues(os.Stdout, rs, toGPS && acqtime)
