@@ -143,14 +143,7 @@ func checkFiles(files <-chan *File, interval time.Duration, by ByFunc) []*Gap {
 	cs := make(map[string]*File)
 	for f := range files {
 		n := by(f)
-		if p, ok := cs[n]; ok && f.Sequence > p.Sequence+1 {
-			g := Gap{
-				UPI:    p.String(),
-				Starts: p.AcqTime,
-				Ends:   f.AcqTime,
-				Before: p.Sequence,
-				After:  f.Sequence,
-			}
+		if g := f.Compare(cs[n]); g != nil {
 			if interval == 0 || g.Duration() >= interval {
 				rs = append(rs, &g)
 			}

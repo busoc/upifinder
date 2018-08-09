@@ -30,6 +30,20 @@ type File struct {
 	AcqTime  time.Time `json:"dtstamp" xml:"dtstamp"`
 }
 
+func (f *File) Compare(p *File) *Gap {
+	if p == nil || f.Sequence == p.Sequence+1 {
+		return nil
+	}
+	g := Gap{
+		UPI:    p.String(),
+		Starts: p.AcqTime,
+		Ends:   f.AcqTime,
+		Before: p.Sequence,
+		After:  f.Sequence,
+	}
+	return &g
+}
+
 func (f *File) Name() string {
 	ps := strings.Split(filepath.Base(f.Path), "_")
 	return strings.Join(ps[:len(ps)-3], "_")
