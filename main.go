@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"text/template"
 	"time"
 
@@ -34,7 +35,7 @@ Usage:
 
 The commands are:
 
-{{range .Commands}}{{if .Runnable}}{{printf "  %-12s %s" .String .Short}}{{end}}
+{{range .Commands}}{{if .Runnable}}{{printf "  %-12s %s" .String .Short}}{{if .Alias}} (alias: {{ join .Alias ", "}}){{end}}{{end}}
 {{end}}
 
 Use {{.Name}} [command] -h for more information about its usage.
@@ -70,7 +71,10 @@ func main() {
 			Name:     filepath.Base(os.Args[0]),
 			Commands: commands,
 		}
-		t := template.Must(template.New("help").Parse(helpText))
+		fs := map[string]interface{}{
+			"join": strings.Join,
+		}
+		t := template.Must(template.New("help").Funcs(fs).Parse(helpText))
 		t.Execute(os.Stderr, data)
 
 		os.Exit(2)

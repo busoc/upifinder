@@ -18,7 +18,7 @@ var checkSourceCommand = &cli.Command{
 	Usage: "check-src [-d] [-s] [-e] [-i] [-f] [-g] <archive,...>",
 	Short: "provide the number of missing files in the archive by sources",
 	Run:   runCheckSource,
-	Desc: `"check" traverse the Hadock archive to find gap(s) of files by sources.
+	Desc: `"check-src" traverse the Hadock archive to find gap(s) of files by sources.
 
 The period of time is selected by upifinder with the following rules (depending
 of the value given to the command line):
@@ -44,7 +44,7 @@ var checkUPICommand = &cli.Command{
 	Alias: []string{"check"},
 	Short: "provide the number of missing files in the archive by UPI",
 	Run:   runCheckUPI,
-	Desc: `"check" traverse the Hadock archive to find gap(s) of files by UPI.
+	Desc: `"check-upi" (check) traverse the Hadock archive to find gap(s) of files by UPI.
 
 If no UPI is given, "check" will collect the list of missing files for each UPI
 found into the Hadock archive in the given period.

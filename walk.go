@@ -17,9 +17,9 @@ import (
 var walkCommand = &cli.Command{
 	Usage: "walk [-d] [-s] [-e] [-u] [-f] <archive,...>",
 	Short: "provide the number of files available in the archive",
-	Alias: []string{"scan"},
+	Alias: []string{"scan", "report"},
 	Run:   runWalk,
-	Desc: `"walk" traverse the Hadock archive and count the number of files
+	Desc: `"walk" (report, scan) traverse the Hadock archive and count the number of files
 created during one run per sources.
 
 If no UPI is given, "walk" will collect the count of files for each UPI found
@@ -79,12 +79,12 @@ func (w *When) String() string {
 }
 
 type Coze struct {
-	UPI     string `json:"upi" xml:"upi"`
-	Count   uint64 `json:"total" xml:"total"`
-	Size    uint64 `json:"size" xml:"size"`
-	Invalid uint64 `json:"invalid" xml:"invalid"`
-	Uniq    uint64 `json:"uniq" xml:"uniq"`
-	Starts    time.Time `json:"dtstart" xml:"dtstart"`
+	UPI     string    `json:"upi" xml:"upi"`
+	Count   uint64    `json:"total" xml:"total"`
+	Size    uint64    `json:"size" xml:"size"`
+	Invalid uint64    `json:"invalid" xml:"invalid"`
+	Uniq    uint64    `json:"uniq" xml:"uniq"`
+	Starts  time.Time `json:"dtstart" xml:"dtstart"`
 	Ends    time.Time `json:"dtend" xml:"dtend"`
 }
 
