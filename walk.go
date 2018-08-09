@@ -4,7 +4,6 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"strconv"
@@ -16,8 +15,9 @@ import (
 )
 
 var walkCommand = &cli.Command{
-	Usage: "walk [-d] [-s] [-e] [-m] [-u] [-f] <archive,...>",
+	Usage: "walk [-d] [-s] [-e] [-u] [-f] <archive,...>",
 	Short: "provide the number of files available in the archive",
+	Alias: []string{"scan"},
 	Run:   runWalk,
 	Desc: `"walk" traverse the Hadock archive and count the number of files
 created during one run per sources.
@@ -41,7 +41,6 @@ Options:
   -e END     only count files created before END
   -d DAYS    only count files created during a period of DAYS
   -f FORMAT  print the results in the given format ("", csv, column)
-  -m         merge all count files of UPI
 
 Examples:
 
@@ -80,10 +79,17 @@ func (w *When) String() string {
 }
 
 type Coze struct {
+	UPI     string `json:"upi" xml:"upi"`
 	Count   uint64 `json:"total" xml:"total"`
 	Size    uint64 `json:"size" xml:"size"`
 	Invalid uint64 `json:"invalid" xml:"invalid"`
 	Uniq    uint64 `json:"uniq" xml:"uniq"`
+	Starts    time.Time `json:"dtstart" xml:"dtstart"`
+	Ends    time.Time `json:"dtend" xml:"dtend"`
+}
+
+func (c Coze) Duration() time.Duration {
+	return c.Ends.Sub(c.Starts)
 }
 
 func (c Coze) Corrupted() float64 {
@@ -101,7 +107,6 @@ func runWalk(cmd *cli.Command, args []string) error {
 	cmd.Flag.Var(&end, "e", "end")
 	upi := cmd.Flag.String("u", "", "upi")
 	period := cmd.Flag.Int("d", 0, "period")
-	merge := cmd.Flag.Bool("m", false, "merge")
 	format := cmd.Flag.String("f", "", "format")
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
@@ -116,18 +121,15 @@ func runWalk(cmd *cli.Command, args []string) error {
 		return err
 	}
 
-	rs := countFiles(walkFiles(paths, *upi, 8, false), *merge)
+	rs := countFiles(walkFiles(paths, *upi, 8))
 	if len(rs) == 0 {
 		return nil
 	}
 	switch f := strings.ToLower(*format); f {
-	case "column":
+	case "column", "":
 		z := printWalkResults(os.Stdout, rs)
 
 		log.Println()
-		log.Printf("%d files found (%dMB) - uniq: %d - corrupted: %d (%3.2f%%)", z.Count, z.Size>>20, z.Uniq, z.Invalid, z.Corrupted())
-	case "":
-		z := printWalkResults(ioutil.Discard, rs)
 		log.Printf("%d files found (%dMB) - uniq: %d - corrupted: %d (%3.2f%%)", z.Count, z.Size>>20, z.Uniq, z.Invalid, z.Corrupted())
 	case "csv":
 		w := csv.NewWriter(os.Stdout)
@@ -153,42 +155,45 @@ func runWalk(cmd *cli.Command, args []string) error {
 }
 
 func printWalkResults(ws io.Writer, rs map[string]*Coze) *Coze {
+	const row = "%-s\t%d\t%d\t%d\t%d\t%3.2f%%\t%s\t%s\t%s"
 	w := tabwriter.NewWriter(ws, 16, 2, 4, ' ', 0)
 	defer w.Flush()
 
 	logger := log.New(w, "", 0)
-	logger.Println("UPI\tFiles\tUniq\tSize (MB)\tCorrupted")
+	logger.Println("UPI\tFiles\tUniq\tSize (MB)\tInvalid\tratio\tstarts\tends\t")
 
 	var z Coze
-	for n, c := range rs {
+	for _, c := range rs {
 		z.Count += c.Count
 		z.Size += c.Size
 		z.Invalid += c.Invalid
 		z.Uniq += c.Uniq
 
-		logger.Printf("%-s\t%d\t%d\t%d\t%d\t(%3.2f%%)", n, c.Count, c.Uniq, c.Size>>20, c.Invalid, c.Corrupted())
+		starts, ends := c.Starts.Format(time.RFC3339), c.Ends.Format(time.RFC3339)
+		logger.Printf(row, c.UPI, c.Count, c.Uniq, c.Size>>20, c.Invalid, c.Corrupted(), starts, ends, c.Duration())
 	}
 	return &z
 }
 
-func countFiles(queue <-chan *File, merge bool) map[string]*Coze {
+func countFiles(queue <-chan *File) map[string]*Coze {
 	rs := make(map[string]*Coze)
 	fs := make(map[string]struct{})
 
 	for f := range queue {
-		var k string
-		if merge {
-			k = f.Info
-		} else {
-			k = f.String()
-		}
+		k := f.String()
 		c, ok := rs[k]
 		if !ok {
-			c = &Coze{}
+			c = &Coze{UPI: f.String()}
 			rs[k] = c
 		}
 		c.Count++
 		c.Size += uint64(f.Size)
+		if c.Starts.IsZero() || c.Starts.After(f.AcqTime) {
+			c.Starts = f.AcqTime
+		}
+		if c.Ends.IsZero() || c.Ends.Before(f.AcqTime) {
+			c.Ends = f.AcqTime
+		}
 
 		n := f.Name()
 		if _, ok := fs[n]; !ok {

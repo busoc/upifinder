@@ -103,7 +103,7 @@ func listFiles(datadir string) Handler {
 			return nil, err
 		}
 		var ds []*File
-		for f := range walkFiles(paths, q.Get("upi"), 8, true) {
+		for f := range walkFiles(paths, q.Get("upi"), 8) {
 			f.Path = filepath.Base(f.Path)
 			ds = append(ds, f)
 		}

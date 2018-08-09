@@ -15,7 +15,7 @@ import (
 )
 
 var checkSourceCommand = &cli.Command{
-	Usage: "check-src [-a] [-d] [-s] [-e] [-i] [-f] [-g] <archive,...>",
+	Usage: "check-src [-d] [-s] [-e] [-i] [-f] [-g] <archive,...>",
 	Short: "provide the number of missing files in the archive by sources",
 	Run:   runCheckSource,
 	Desc: `"check" traverse the Hadock archive to find gap(s) of files by sources.
@@ -36,12 +36,11 @@ Options:
   -d DAYS    only count files created during a period of DAYS
   -i TIME    only consider gap with at least TIME duration
   -f FORMAT  print the results in the given format ("", csv, column)
-  -a         print the ACQTIME instead of the VMU time
   -g         print the ACQTIME as seconds elapsed since GPS epoch (-a should be set)`,
 }
 
 var checkUPICommand = &cli.Command{
-	Usage: "check-upi [-a] [-d] [-s] [-e] [-u] [-i] [-f] [-g] <archive,...>",
+	Usage: "check-upi [-d] [-s] [-e] [-u] [-i] [-f] [-g] <archive,...>",
 	Alias: []string{"check"},
 	Short: "provide the number of missing files in the archive by UPI",
 	Run:   runCheckUPI,
@@ -67,7 +66,6 @@ Options:
   -d DAYS    only count files created during a period of DAYS
   -i TIME    only consider gap with at least TIME duration
   -f FORMAT  print the results in the given format ("", csv, column)
-  -a         print the ACQTIME instead of the VMU time
   -g         print the ACQTIME as seconds elapsed since GPS epoch (-a should be set)`,
 }
 
@@ -91,11 +89,12 @@ func runCheckSource(cmd *cli.Command, args []string) error {
 	var start, end When
 	cmd.Flag.Var(&start, "s", "start")
 	cmd.Flag.Var(&end, "e", "end")
-	acqtime := cmd.Flag.Bool("a", false, "acquisition time")
+	// acqtime := cmd.Flag.Bool("a", false, "acquisition time")
 	period := cmd.Flag.Int("d", 0, "period")
 	interval := cmd.Flag.Duration("i", 0, "interval")
 	format := cmd.Flag.String("f", "", "format")
 	toGPS := cmd.Flag.Bool("g", false, "convert time to GPS")
+
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
 	}
@@ -108,20 +107,21 @@ func runCheckSource(cmd *cli.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	rs := checkFiles(walkFiles(paths, "", 1, *acqtime), *interval, bySource)
-	return reportCheckResults(rs, *format, *toGPS, *acqtime)
+	rs := checkFiles(walkFiles(paths, "", 1), *interval, bySource)
+	return reportCheckResults(rs, *format, *toGPS)
 }
 
 func runCheckUPI(cmd *cli.Command, args []string) error {
 	var start, end When
 	cmd.Flag.Var(&start, "s", "start")
 	cmd.Flag.Var(&end, "e", "end")
-	acqtime := cmd.Flag.Bool("a", false, "acquisition time")
+	// acqtime := cmd.Flag.Bool("a", false, "acquisition time")
 	upi := cmd.Flag.String("u", "", "upi")
 	period := cmd.Flag.Int("d", 0, "period")
 	interval := cmd.Flag.Duration("i", 0, "interval")
 	format := cmd.Flag.String("f", "", "format")
 	toGPS := cmd.Flag.Bool("g", false, "convert time to GPS")
+
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
 	}
@@ -134,8 +134,8 @@ func runCheckUPI(cmd *cli.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	rs := checkFiles(walkFiles(paths, *upi, 1, *acqtime), *interval, byUPI)
-	return reportCheckResults(rs, *format, *toGPS, *acqtime)
+	rs := checkFiles(walkFiles(paths, *upi, 1), *interval, byUPI)
+	return reportCheckResults(rs, *format, *toGPS)
 }
 
 func checkFiles(files <-chan *File, interval time.Duration, by ByFunc) []*Gap {
@@ -143,9 +143,10 @@ func checkFiles(files <-chan *File, interval time.Duration, by ByFunc) []*Gap {
 	cs := make(map[string]*File)
 	for f := range files {
 		n := by(f)
-		if g := f.Compare(cs[n]); g != nil {
-			if interval == 0 || g.Duration() >= interval {
-				rs = append(rs, &g)
+		if p, ok := cs[n]; ok && f.Sequence > p.Sequence {
+			g := f.Compare(p)
+			if (g != nil && g.Count() > 0) && (interval == 0 || g.Duration() >= interval) {
+				rs = append(rs, g)
 			}
 		}
 		cs[n] = f
@@ -153,18 +154,18 @@ func checkFiles(files <-chan *File, interval time.Duration, by ByFunc) []*Gap {
 	return rs
 }
 
-func reportCheckResults(rs []*Gap, format string, toGPS, acqtime bool) error {
+func reportCheckResults(rs []*Gap, format string, toGPS bool) error {
 	if len(rs) == 0 {
 		return nil
 	}
 	switch f := strings.ToLower(format); f {
 	case "column", "":
-		count, delta := printCheckColumns(os.Stdout, rs, toGPS && acqtime)
+		count, delta := printCheckColumns(os.Stdout, rs, toGPS)
 
 		log.Println()
 		log.Printf("%d missing files (%s)", count, delta)
 	case "csv":
-		return printCheckValues(os.Stdout, rs, toGPS && acqtime)
+		return printCheckValues(os.Stdout, rs, toGPS)
 	default:
 		return fmt.Errorf("unsupported format: %s", format)
 	}

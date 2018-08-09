@@ -37,7 +37,7 @@ func runPush(cmd *cli.Command, args []string) error {
 	var group errgroup.Group
 	group.Go(func() error {
 		//count files and post reports
-		rs := countFiles(walkFiles(paths, "", 8, false), false)
+		rs := countFiles(walkFiles(paths, "", 8))
 		if len(rs) == 0 {
 			return nil
 		}
@@ -54,7 +54,7 @@ func runPush(cmd *cli.Command, args []string) error {
 	})
 	group.Go(func() error {
 		//report gaps
-		rs := checkFiles(walkFiles(paths, "", 1, true), 0, byUPI)
+		rs := checkFiles(walkFiles(paths, "", 1), 0, byUPI)
 		if len(rs) == 0 {
 			return nil
 		}

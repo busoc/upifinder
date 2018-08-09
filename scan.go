@@ -34,6 +34,9 @@ func (f *File) Compare(p *File) *Gap {
 	if p == nil || f.Sequence == p.Sequence+1 {
 		return nil
 	}
+	if p.AcqTime.After(f.AcqTime) {
+		return p.Compare(f)
+	}
 	g := Gap{
 		UPI:    p.String(),
 		Starts: p.AcqTime,
@@ -84,7 +87,7 @@ func listPaths(paths []string, period int, dtstart, dtend time.Time) ([]string, 
 	return ps, nil
 }
 
-func walkFiles(paths []string, upi string, max int, acqtime bool) <-chan *File {
+func walkFiles(paths []string, upi string, max int) <-chan *File {
 	q := make(chan *File)
 	go func() {
 		defer close(q)
@@ -96,7 +99,7 @@ func walkFiles(paths []string, upi string, max int, acqtime bool) <-chan *File {
 			dir := a
 			sema <- struct{}{}
 			group.Go(func() error {
-				err := findFiles(dir, upi, acqtime, q)
+				err := findFiles(dir, upi, q)
 				<-sema
 				return err
 			})
@@ -106,7 +109,7 @@ func walkFiles(paths []string, upi string, max int, acqtime bool) <-chan *File {
 	return q
 }
 
-func findFiles(dir, upi string, acqtime bool, queue chan<- *File) error {
+func findFiles(dir, upi string, queue chan<- *File) error {
 	return filepath.Walk(dir, func(p string, i os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -136,13 +139,14 @@ func findFiles(dir, upi string, acqtime bool, queue chan<- *File) error {
 		}
 
 		if t, err := time.Parse("20060102150405", ps[len(ps)-3]+ps[len(ps)-2]); err == nil {
-			var delta time.Duration
-			if !acqtime {
-				ps := strings.SplitN(ps[len(ps)-1], ".", 2)
-				d, _ := strconv.ParseInt(strings.TrimLeft(ps[0], "0"), 10, 64)
-				delta = time.Duration(d) * time.Minute
-			}
-			f.AcqTime = t.Add(delta)
+			// var delta time.Duration
+			// if !acqtime {
+			// 	ps := strings.SplitN(ps[len(ps)-1], ".", 2)
+			// 	d, _ := strconv.ParseInt(strings.TrimLeft(ps[0], "0"), 10, 64)
+			// 	delta = time.Duration(d) * time.Minute
+			// }
+			// f.AcqTime = t.Add(delta)
+			f.AcqTime = t
 		} else {
 			return err
 		}
