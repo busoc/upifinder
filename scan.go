@@ -11,7 +11,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type ByFunc func(f *File) string
+type ByFunc func(*File) string
 
 func byUPI(f *File) string {
 	return f.String()

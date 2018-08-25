@@ -36,7 +36,7 @@ Options:
   -d DAYS    only count files created during a period of DAYS
   -i TIME    only consider gap with at least TIME duration
   -f FORMAT  print the results in the given format ("", csv, column)
-  -g         print the ACQTIME as seconds elapsed since GPS epoch (-a should be set)`,
+  -g         print the ACQTIME as seconds elapsed since GPS epoch`,
 }
 
 var checkUPICommand = &cli.Command{
@@ -66,7 +66,7 @@ Options:
   -d DAYS    only count files created during a period of DAYS
   -i TIME    only consider gap with at least TIME duration
   -f FORMAT  print the results in the given format ("", csv, column)
-  -g         print the ACQTIME as seconds elapsed since GPS epoch (-a should be set)`,
+  -g         print the ACQTIME as seconds elapsed since GPS epoch`,
 }
 
 type Gap struct {
