@@ -34,6 +34,11 @@ of the value given to the command line):
   * [d]       : walk from TODAY - DAYS to TODAY
   * default   : walk recursively on the given path(s)
 
+Unique files:
+
+the uniq field only reports the number of unique files (correct) excluding bad files
+from the count and the doubles.
+
 Options:
 
   -u UPI     only count files for the given UPI
@@ -196,7 +201,7 @@ func countFiles(queue <-chan *File) map[string]*Coze {
 		}
 
 		n := f.Name()
-		if _, ok := fs[n]; !ok {
+		if _, ok := fs[n]; !ok && f.Valid() {
 			c.Uniq++
 			fs[n] = struct{}{}
 		}

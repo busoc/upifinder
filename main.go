@@ -53,8 +53,8 @@ func init() {
 	log.SetFlags(0)
 	log.SetOutput(os.Stdout)
 
-	cli.Version = "0.4.5"
-	cli.BuildTime = "2018-08-09 08:07:00"
+	cli.Version = "0.4.7"
+	cli.BuildTime = "2018-11-06 09:14:00"
 }
 
 func main() {
