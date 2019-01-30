@@ -89,8 +89,12 @@ type Coze struct {
 	Size    uint64    `json:"size" xml:"size"`
 	Invalid uint64    `json:"invalid" xml:"invalid"`
 	Uniq    uint64    `json:"uniq" xml:"uniq"`
+
 	Starts  time.Time `json:"dtstart" xml:"dtstart"`
 	Ends    time.Time `json:"dtend" xml:"dtend"`
+
+	First uint32 `json:"first" xml:"first"`
+	Last  uint32 `json:"last" xml:"last"`
 }
 
 func (c Coze) Duration() time.Duration {
@@ -160,12 +164,12 @@ func runWalk(cmd *cli.Command, args []string) error {
 }
 
 func printWalkResults(ws io.Writer, rs map[string]*Coze) *Coze {
-	const row = "%-s\t%d\t%d\t%d\t%d\t%3.2f%%\t%s\t%s\t%s"
+	const row = "%-s\t%d\t%d\t%d\t%d\t%3.2f%%\t%s\t%s\t%d\t%d"
 	w := tabwriter.NewWriter(ws, 16, 2, 4, ' ', 0)
 	defer w.Flush()
 
 	logger := log.New(w, "", 0)
-	logger.Println("UPI\tFiles\tUniq\tSize (MB)\tInvalid\tratio\tstarts\tends\t")
+	logger.Println("UPI\tFiles\tUniq\tSize (MB)\tInvalid\tratio\tstarts\tends\tfirst\tlast")
 
 	var z Coze
 	for _, c := range rs {
@@ -175,7 +179,7 @@ func printWalkResults(ws io.Writer, rs map[string]*Coze) *Coze {
 		z.Uniq += c.Uniq
 
 		starts, ends := c.Starts.Format(time.RFC3339), c.Ends.Format(time.RFC3339)
-		logger.Printf(row, c.UPI, c.Count, c.Uniq, c.Size>>20, c.Invalid, c.Corrupted(), starts, ends, c.Duration())
+		logger.Printf(row, c.UPI, c.Count, c.Uniq, c.Size>>20, c.Invalid, c.Corrupted(), starts, ends, c.First, c.Last)
 	}
 	return &z
 }
@@ -195,9 +199,11 @@ func countFiles(queue <-chan *File) map[string]*Coze {
 		c.Size += uint64(f.Size)
 		if c.Starts.IsZero() || c.Starts.After(f.AcqTime) {
 			c.Starts = f.AcqTime
+			c.First = f.Sequence
 		}
 		if c.Ends.IsZero() || c.Ends.Before(f.AcqTime) {
 			c.Ends = f.AcqTime
+			c.Last = f.Sequence
 		}
 
 		n := f.Name()
