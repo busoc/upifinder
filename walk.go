@@ -6,8 +6,10 @@ import (
 	"io"
 	"log"
 	"os"
+	"math"
 	"strconv"
 	"strings"
+	"sort"
 	"text/tabwriter"
 	"time"
 
@@ -139,7 +141,7 @@ func runWalk(cmd *cli.Command, args []string) error {
 		z := printWalkResults(os.Stdout, rs)
 
 		log.Println()
-		log.Printf("%d files found (%dMB) - uniq: %d - corrupted: %d (%3.2f%%)", z.Count, z.Size>>20, z.Uniq, z.Invalid, z.Corrupted())
+		log.Printf("%d files found (%s) - uniq: %d - corrupted: %d (%3.2f%%)", z.Count, prettySize(z.Size), z.Uniq, z.Invalid, z.Corrupted())
 	case "csv":
 		w := csv.NewWriter(os.Stdout)
 		defer w.Flush()
@@ -164,24 +166,65 @@ func runWalk(cmd *cli.Command, args []string) error {
 }
 
 func printWalkResults(ws io.Writer, rs map[string]*Coze) *Coze {
-	const row = "%-s\t%d\t%d\t%d\t%d\t%3.2f%%\t%s\t%s\t%d\t%d"
+	const row = "%-s\t%d\t%d\t%s\t%d\t%3.2f%%\t%s\t%s\t%d\t%d"
 	w := tabwriter.NewWriter(ws, 16, 2, 4, ' ', 0)
 	defer w.Flush()
 
 	logger := log.New(w, "", 0)
-	logger.Println("UPI\tFiles\tUniq\tSize (MB)\tInvalid\tratio\tstarts\tends\tfirst\tlast")
+	logger.Println("UPI\tFiles\tUniq\tSize\tInvalid\tratio\tstarts\tends\tfirst\tlast")
 
-	var z Coze
-	for _, c := range rs {
+	var (
+		z Coze
+		vs []string
+	)
+	for n := range rs {
+		vs = append(vs, n)
+	}
+	sort.Strings(vs)
+	for _, n := range vs {
+		c := rs[n]
+
 		z.Count += c.Count
 		z.Size += c.Size
 		z.Invalid += c.Invalid
 		z.Uniq += c.Uniq
 
 		starts, ends := c.Starts.Format(time.RFC3339), c.Ends.Format(time.RFC3339)
-		logger.Printf(row, c.UPI, c.Count, c.Uniq, c.Size>>20, c.Invalid, c.Corrupted(), starts, ends, c.First, c.Last)
+		logger.Printf(row, c.UPI, c.Count, c.Uniq, prettySize(c.Size), c.Invalid, c.Corrupted(), starts, ends, c.First, c.Last)
 	}
 	return &z
+}
+
+const (
+	kilo = 1024
+	mega = kilo*kilo
+	giga = mega*kilo
+	tera = giga*kilo
+)
+
+func prettySize(s uint64) string {
+	f := float64(s)
+	var (
+		x, m float64
+		u, p string
+	)
+	if x, m = f/tera, math.Mod(f, tera); x > 1.0 {
+		u = "TB"
+	} else if x, m = f/giga, math.Mod(f, giga); x > 1.0 {
+		u = "GB"
+	} else if x, m = f/mega, math.Mod(f, mega); x > 1.0 {
+		u = "MB"
+	} else if x, m = f/kilo, math.Mod(f, kilo); x > 1.0 {
+		u = "KB"
+	} else {
+		x, u = f, "B"
+	}
+	if m > 0 {
+		p = "%.2f%s"
+	} else {
+		p = "%.0f%s"
+	}
+	return fmt.Sprintf(p, x, u)
 }
 
 func countFiles(queue <-chan *File) map[string]*Coze {
