@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"math"
+	"os"
+	"sort"
 	"strconv"
 	"strings"
-	"sort"
 	"text/tabwriter"
 	"time"
 
@@ -86,14 +86,14 @@ func (w *When) String() string {
 }
 
 type Coze struct {
-	UPI     string    `json:"upi" xml:"upi"`
-	Count   uint64    `json:"total" xml:"total"`
-	Size    uint64    `json:"size" xml:"size"`
-	Invalid uint64    `json:"invalid" xml:"invalid"`
-	Uniq    uint64    `json:"uniq" xml:"uniq"`
+	UPI     string `json:"upi" xml:"upi"`
+	Count   uint64 `json:"total" xml:"total"`
+	Size    uint64 `json:"size" xml:"size"`
+	Invalid uint64 `json:"invalid" xml:"invalid"`
+	Uniq    uint64 `json:"uniq" xml:"uniq"`
 
-	Starts  time.Time `json:"dtstart" xml:"dtstart"`
-	Ends    time.Time `json:"dtend" xml:"dtend"`
+	Starts time.Time `json:"dtstart" xml:"dtstart"`
+	Ends   time.Time `json:"dtend" xml:"dtend"`
 
 	First uint32 `json:"first" xml:"first"`
 	Last  uint32 `json:"last" xml:"last"`
@@ -174,7 +174,7 @@ func printWalkResults(ws io.Writer, rs map[string]*Coze) *Coze {
 	logger.Println("UPI\tFiles\tUniq\tSize\tInvalid\tratio\tstarts\tends\tfirst\tlast")
 
 	var (
-		z Coze
+		z  Coze
 		vs []string
 	)
 	for n := range rs {
@@ -197,9 +197,9 @@ func printWalkResults(ws io.Writer, rs map[string]*Coze) *Coze {
 
 const (
 	kilo = 1024
-	mega = kilo*kilo
-	giga = mega*kilo
-	tera = giga*kilo
+	mega = kilo * kilo
+	giga = mega * kilo
+	tera = giga * kilo
 )
 
 func prettySize(s uint64) string {
