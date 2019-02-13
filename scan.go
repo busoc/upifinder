@@ -159,6 +159,9 @@ func scanZip(p, upi string) (<-chan *File, error) {
 			close(q)
 		}()
 		for _, f := range rc.File {
+			if filepath.Ext(f.Name) == ".xml" {
+				continue
+			}
 			f, err := parseFilename(f.Name, upi, int64(f.UncompressedSize64))
 			if err != nil {
 				break
@@ -188,6 +191,9 @@ func scanTar(p, upi string) (<-chan *File, error) {
 			}
 			if err != nil {
 				break
+			}
+			if filepath.Ext(h.Name) == ".xml" {
+				continue
 			}
 			f, err := parseFilename(h.Name, upi, h.Size)
 			if err != nil {
