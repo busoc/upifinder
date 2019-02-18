@@ -141,7 +141,8 @@ func runWalk(cmd *cli.Command, args []string) error {
 		z := printWalkResults(os.Stdout, rs)
 
 		log.Println()
-		log.Printf("%d files found (%s) - uniq: %d - corrupted: %d (%3.2f%%)", z.Count, prettySize(z.Size), z.Uniq, z.Invalid, z.Corrupted())
+		s := strings.TrimSpace(prettySize(z.Size))
+		log.Printf("%d files found (%s) - uniq: %d - corrupted: %d (%3.2f%%)", z.Count, s, z.Uniq, z.Invalid, z.Corrupted())
 	case "csv":
 		w := csv.NewWriter(os.Stdout)
 		defer w.Flush()
@@ -220,9 +221,9 @@ func prettySize(s uint64) string {
 		x, u = f, "B"
 	}
 	if m > 0 {
-		p = "%.2f%s"
+		p = "%6.2f%s"
 	} else {
-		p = "%.0f%s"
+		p = "%6.0f%s"
 	}
 	return fmt.Sprintf(p, x, u)
 }

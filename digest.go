@@ -96,6 +96,9 @@ func retrPaths(base string) <-chan string {
       if i.IsDir() {
         return nil
       }
+      if filepath.Ext(p) == ".xml" {
+        return nil
+      }
       q <- p
       return nil
     })
