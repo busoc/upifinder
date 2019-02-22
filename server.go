@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"time"
 
@@ -119,13 +121,6 @@ func viewNodes(hist *History) Handler {
 	return f
 }
 
-func viewReport(hist *History) Handler {
-	f := func(r *http.Request) (interface{}, error) {
-		return nil, nil
-	}
-	return f
-}
-
 func storeReports(hist *History) Handler {
 	f := func(r *http.Request) (interface{}, error) {
 		defer r.Body.Close()
@@ -169,15 +164,17 @@ func viewReports(hist *History) Handler {
 		vars := mux.Vars(r)
 		key := fmt.Sprintf("%s/%s/%s/%s", vars["instance"], vars["type"], vars["mode"], vars["report"])
 
-		var (
-			data interface{}
-			err  error
-		)
+		q, err := parseQuery(r.URL.Query())
+		if err != nil {
+			return nil, err
+		}
+
+		var data interface{}
 		switch report := vars["report"]; report {
 		case "files":
-			data, err = hist.ViewFiles(key)
+			data, err = hist.ViewFiles(key, q)
 		case "status":
-			data, err = hist.ViewStatus(key)
+			data, err = hist.ViewStatus(key, q)
 		default:
 			return nil, ErrNotFound(report)
 		}
@@ -187,6 +184,75 @@ func viewReports(hist *History) Handler {
 		return data, nil
 	}
 	return f
+}
+
+type query struct {
+	Starts time.Time
+	Ends   time.Time
+	UPI    []string
+}
+
+func (q query) Keep(u string, s, e time.Time) bool {
+	if len(q.UPI) > 0 {
+		ix := sort.SearchStrings(q.UPI, u)
+		if ix >= len(q.UPI) || q.UPI[ix] != u {
+			return false
+		}
+	}
+	return q.Between(s) || q.Between(e)
+}
+
+func (q query) Between(t time.Time) bool {
+	if q.Starts.IsZero() || q.Ends.IsZero() {
+		return true
+	}
+	return t.Equal(q.Starts) || t.Equal(q.Ends) || (t.After(q.Starts) && t.Before(q.Ends))
+}
+
+func parseQuery(qs url.Values) (*query, error) {
+	var (
+		q   query
+		err error
+	)
+	q.Starts, err = parseTime(qs.Get("dtstart"))
+	if err != nil {
+		return nil, err
+	}
+	q.Ends, err = parseTime(qs.Get("dtend"))
+	if err != nil {
+		return nil, err
+	}
+	if !q.Starts.IsZero() && !q.Ends.IsZero() {
+		if q.Starts.Equal(q.Ends) || q.Starts.After(q.Ends) {
+			return nil, fmt.Errorf("invalid starts/ends")
+		}
+	}
+	q.UPI = qs["upi"]
+	sort.Strings(q.UPI)
+
+	return &q, nil
+}
+
+func parseTime(s string) (time.Time, error) {
+	var (
+		t   time.Time
+		err error
+	)
+	if s == "" {
+		return t, err
+	}
+	formats := []string{
+		time.RFC3339,
+		"2006-01-02",
+		"2006-01-02 15:04:05",
+	}
+	for _, f := range formats {
+		t, err = time.Parse(f, s)
+		if err == nil {
+			return t, nil
+		}
+	}
+	return t, fmt.Errorf("no suitable format found for %q", s)
 }
 
 func negociateStructured(h Handler) http.Handler {

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
+	"strings"
 	"time"
 
 	"github.com/boltdb/bolt"
@@ -54,7 +54,7 @@ func (h *History) ViewNodes() []*Node {
 	return vs
 }
 
-func (h *History) ViewStatus(key string) ([]*timegap, error) {
+func (h *History) ViewStatus(key string, q *query) ([]*timegap, error) {
 	var ds []*timegap
 	err := h.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(key))
@@ -62,6 +62,8 @@ func (h *History) ViewStatus(key string) ([]*timegap, error) {
 			return nil
 		}
 		return b.ForEach(func(k, v []byte) error {
+			_, upi := splitKey(k)
+
 			b := b.Bucket(k)
 			c := b.Cursor()
 			k, v = c.Last()
@@ -78,14 +80,16 @@ func (h *History) ViewStatus(key string) ([]*timegap, error) {
 			if err := json.Unmarshal(v, &g); err != nil {
 				return err
 			}
-			ds = append(ds, &timegap{When: t, Gap: &g})
+			if q.Keep(upi, g.Starts, g.Ends) {
+				ds = append(ds, &timegap{When: t, Gap: &g})
+			}
 			return nil
 		})
 	})
 	return ds, err
 }
 
-func (h *History) ViewFiles(key string) (map[string]*timecoze, error) {
+func (h *History) ViewFiles(key string, q *query) (map[string]*timecoze, error) {
 	ds := make(map[string]*timecoze)
 	err := h.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(key))
@@ -93,6 +97,8 @@ func (h *History) ViewFiles(key string) (map[string]*timecoze, error) {
 			return nil
 		}
 		return b.ForEach(func(u, v []byte) error {
+			_, upi := splitKey(u)
+
 			b := b.Bucket(u)
 			c := b.Cursor()
 			k, v := c.Last()
@@ -109,11 +115,18 @@ func (h *History) ViewFiles(key string) (map[string]*timecoze, error) {
 			if err := json.Unmarshal(v, &z); err != nil {
 				return err
 			}
-			ds[string(u)] = &timecoze{When: t, Coze: &z}
+			if q.Keep(upi, z.Starts, z.Ends) {
+				ds[string(u)] = &timecoze{When: t, Coze: &z}
+			}
 			return nil
 		})
 	})
 	return ds, err
+}
+
+func splitKey(k []byte) (string, string) {
+	vs := strings.Split(string(k), "/")
+	return vs[0], vs[1]
 }
 
 func (h *History) StoreStatus(key string, ds []*Gap, when time.Time) error {
@@ -124,12 +137,10 @@ func (h *History) StoreStatus(key string, ds []*Gap, when time.Time) error {
 		}
 		mmt, err := when.MarshalText()
 		if err != nil {
-			log.Println("marshalling time failed for status report:", err)
 			return err
 		}
 		for _, d := range ds {
 			if err := storeReport(b, []byte(d.UPI), mmt, d); err != nil {
-				log.Printf("storing status report for %s failed: %s", d.UPI, err)
 				return err
 			}
 		}
@@ -145,12 +156,10 @@ func (h *History) StoreFiles(key string, ds map[string]*Coze, when time.Time) er
 		}
 		mmt, err := when.MarshalText()
 		if err != nil {
-			log.Println("marshalling time failed for files report:", err)
 			return err
 		}
 		for u, c := range ds {
 			if err := storeReport(b, []byte(u), mmt, c); err != nil {
-				log.Printf("storing files report for %s failed:", u, err)
 				return err
 			}
 		}
