@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/midbel/cli"
-	"golang.org/x/sync/errgroup"
+	// "golang.org/x/sync/errgroup"
 )
 
 var pushCommand = &cli.Command{
@@ -34,42 +34,56 @@ func runPush(cmd *cli.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	var group errgroup.Group
-	group.Go(func() error {
-		//count files and post reports
-		rs := countFiles(walkFiles(paths, "", 8))
-		if len(rs) == 0 {
-			return nil
-		}
-		c := struct {
-			When time.Time        `json:"dtstamp"`
-			Data map[string]*Coze `json:"report"`
-		}{
-			When: time.Now(),
-			Data: rs,
-		}
-		remote := *u
-		remote.Path = path.Join(remote.Path, "files") + "/"
-		return pushData(remote.String(), c)
-	})
-	group.Go(func() error {
-		//report gaps
-		rs := checkFiles(walkFiles(paths, "", 1), 0, byUPI)
-		if len(rs) == 0 {
-			return nil
-		}
-		c := struct {
-			When time.Time `json:"dtstamp"`
-			Data []*Gap    `json:"report"`
-		}{
-			When: time.Now(),
-			Data: rs,
-		}
-		remote := *u
-		remote.Path = path.Join(remote.Path, "status") + "/"
-		return pushData(remote.String(), c)
-	})
-	return group.Wait()
+	if err := pushCount(*u, paths); err != nil {
+		return err
+	}
+	if err := pushCheck(*u, paths); err != nil {
+		return err
+	}
+	return nil
+
+	// var group errgroup.Group
+	// group.Go(func() error {
+	//  return pushCount(u, paths)
+	// })
+	// group.Go(func() error {
+	//  return pushCheck(*u, paths)
+	// })
+	// return group.Wait()
+}
+
+func pushCheck(u url.URL, paths []string) error {
+	//report gaps
+	rs := checkFiles(walkFiles(paths, "", 1), 0, byUPI)
+	if len(rs) == 0 {
+		return nil
+	}
+	c := struct {
+		When time.Time `json:"dtstamp"`
+		Data []*Gap    `json:"report"`
+	}{
+		When: time.Now(),
+		Data: rs,
+	}
+	u.Path = path.Join(u.Path, "status") + "/"
+	return pushData(u.String(), c)
+}
+
+func pushCount(u url.URL, paths []string) error {
+	//count files and post reports
+	rs := countFiles(walkFiles(paths, "", 8))
+	if len(rs) == 0 {
+		return nil
+	}
+	c := struct {
+		When time.Time        `json:"dtstamp"`
+		Data map[string]*Coze `json:"report"`
+	}{
+		When: time.Now(),
+		Data: rs,
+	}
+	u.Path = path.Join(u.Path, "files") + "/"
+	return pushData(u.String(), c)
 }
 
 func pushData(remote string, data interface{}) error {
