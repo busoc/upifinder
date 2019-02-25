@@ -148,7 +148,7 @@ func runWalk(cmd *cli.Command, args []string) error {
 		defer w.Flush()
 		for n, c := range rs {
 			row := []string{
-				n,
+				Transform(n),
 				strconv.FormatUint(c.Count, 10),
 				strconv.FormatUint(c.Uniq, 10),
 				strconv.FormatUint(c.Size>>20, 10),
@@ -191,41 +191,9 @@ func printWalkResults(ws io.Writer, rs map[string]*Coze) *Coze {
 		z.Uniq += c.Uniq
 
 		starts, ends := c.Starts.Format(time.RFC3339), c.Ends.Format(time.RFC3339)
-		logger.Printf(row, c.UPI, c.Count, c.Uniq, prettySize(c.Size), c.Invalid, c.Corrupted(), starts, ends, c.First, c.Last)
+		logger.Printf(row, Transform(c.UPI), c.Count, c.Uniq, prettySize(c.Size), c.Invalid, c.Corrupted(), starts, ends, c.First, c.Last)
 	}
 	return &z
-}
-
-const (
-	kilo = 1024
-	mega = kilo * kilo
-	giga = mega * kilo
-	tera = giga * kilo
-)
-
-func prettySize(s uint64) string {
-	f := float64(s)
-	var (
-		x, m float64
-		u, p string
-	)
-	if x, m = f/tera, math.Mod(f, tera); x > 1.0 {
-		u = "TB"
-	} else if x, m = f/giga, math.Mod(f, giga); x > 1.0 {
-		u = "GB"
-	} else if x, m = f/mega, math.Mod(f, mega); x > 1.0 {
-		u = "MB"
-	} else if x, m = f/kilo, math.Mod(f, kilo); x > 1.0 {
-		u = "KB"
-	} else {
-		x, u = f, "B"
-	}
-	if m > 0 {
-		p = "%6.2f%s"
-	} else {
-		p = "%6.0f%s"
-	}
-	return fmt.Sprintf(p, x, u)
 }
 
 func countFiles(queue <-chan *File) map[string]*Coze {

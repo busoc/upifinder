@@ -183,7 +183,7 @@ func printCheckValues(ws io.Writer, rs []*Gap, gps bool) error {
 			starts, ends = g.Starts.Format(time.RFC3339), g.Ends.Format(time.RFC3339)
 		}
 		row := []string{
-			g.UPI,
+			Transform(g.UPI),
 			starts,
 			ends,
 			g.Duration().String(),
@@ -222,7 +222,7 @@ func printCheckColumns(ws io.Writer, rs []*Gap, gps bool) (uint64, time.Duration
 		} else {
 			starts, ends = g.Starts.Format(time.RFC3339), g.Ends.Format(time.RFC3339)
 		}
-		logger.Printf("%-s\t%s\t%s\t%s\t%d\t%d\t%d", g.UPI, starts, ends, delta, g.Before, g.After, count)
+		logger.Printf("%-s\t%s\t%s\t%s\t%d\t%d\t%d", Transform(g.UPI), starts, ends, delta, g.Before, g.After, count)
 	}
 	return total, elapsed
 }

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -141,7 +142,9 @@ func findFiles(dir, upi string, queue chan<- *File) error {
 			if err != nil {
 				return err
 			}
-			queue <- f
+			if f != nil {
+				queue <- f
+			}
 		}
 		return nil
 	})
@@ -166,7 +169,9 @@ func scanZip(p, upi string) (<-chan *File, error) {
 			if err != nil {
 				break
 			}
-			q <- f
+			if f != nil {
+				q <- f
+			}
 		}
 	}()
 	return q, nil
@@ -199,7 +204,9 @@ func scanTar(p, upi string) (<-chan *File, error) {
 			if err != nil {
 				break
 			}
-			q <- f
+			if f != nil {
+				q <- f
+			}
 			if _, err := io.CopyN(ioutil.Discard, t, h.Size); err != nil {
 				break
 			}
@@ -209,12 +216,22 @@ func scanTar(p, upi string) (<-chan *File, error) {
 }
 
 func parseFilename(p, upi string, i int64) (*File, error) {
+	if !utf8.ValidString(p) {
+		return nil, nil
+	}
 	ps := strings.Split(filepath.Base(p), "_")
 
 	f := File{
 		Path:   p,
 		Source: strings.TrimLeft(ps[0], "0"),
 		Size:   i,
+	}
+	if s, err := strconv.ParseInt(f.Source, 16, 8); err != nil {
+		return nil, err
+	} else {
+		if s < 0x33 || s > 0x55 {
+			return nil, nil
+		}
 	}
 	if len(upi) == 0 {
 		f.Info = strings.Join(ps[1:len(ps)-5], "_")
