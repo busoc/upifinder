@@ -39,6 +39,7 @@ func runServer(cmd *cli.Command, args []string) error {
 		Addr     string `toml:"address"`
 		Database string `toml:"database"`
 		Datadir  string `toml:"datadir"`
+		Interval int    `toml:"interval"`
 	}{}
 	f, err := os.Open(cmd.Flag.Arg(0))
 	if err != nil {
@@ -59,7 +60,7 @@ func runServer(cmd *cli.Command, args []string) error {
 	defer db.Close()
 	hist := &History{db}
 
-	h := setupHandlers(hist, c.Datadir)
+	h := setupHandlers(hist, c.Datadir, c.Interval)
 	if *dev {
 		h = handlers.LoggingHandler(os.Stderr, h)
 	}
@@ -84,19 +85,22 @@ const (
 
 const MaxBodySize = 16<<10
 
-func setupHandlers(hist *History, datadir string) http.Handler {
+const DefaultInterval = time.Duration(24*30) * time.Hour
+
+func setupHandlers(hist *History, datadir string, interval int) http.Handler {
 	cs := []string{
 		acceptCSV,
 		acceptStruct,
 	}
+	delay := time.Duration(interval) * time.Hour
 	r := mux.NewRouter()
 	for _, c := range cs {
 		var h http.Handler
 		switch c {
 		case acceptCSV:
-			h = negociateCSV(viewReports(hist))
+			h = negociateCSV(viewReports(hist, delay))
 		case acceptStruct:
-			h = negociateStructured(viewReports(hist))
+			h = negociateStructured(viewReports(hist, delay))
 		}
 		if h == nil {
 			continue
@@ -199,12 +203,15 @@ func storeReports(hist *History) Handler {
 	return f
 }
 
-func viewReports(hist *History) Handler {
+func viewReports(hist *History, interval time.Duration) Handler {
+	if interval <= 0 {
+		interval = DefaultInterval
+	}
 	f := func(r *http.Request) (interface{}, error) {
 		vars := mux.Vars(r)
 		key := fmt.Sprintf("%s/%s/%s/%s", vars["instance"], vars["type"], vars["mode"], vars["report"])
 
-		q, err := parseQuery(r.URL.Query())
+		q, err := parseQuery(r.URL.Query(), interval)
 		if err != nil {
 			return nil, err
 		}
@@ -249,7 +256,7 @@ func (q query) Between(t time.Time) bool {
 	return t.Equal(q.Starts) || t.Equal(q.Ends) || (t.After(q.Starts) && t.Before(q.Ends))
 }
 
-func parseQuery(qs url.Values) (*query, error) {
+func parseQuery(qs url.Values, interval time.Duration) (*query, error) {
 	var (
 		q   query
 		err error
@@ -265,6 +272,9 @@ func parseQuery(qs url.Values) (*query, error) {
 	if !q.Starts.IsZero() && !q.Ends.IsZero() {
 		if q.Starts.Equal(q.Ends) || q.Starts.After(q.Ends) {
 			return nil, fmt.Errorf("invalid starts/ends")
+		}
+		if q.Ends.Sub(q.Starts) > interval {
+			return nil, fmt.Errorf("interval too large")
 		}
 	}
 	q.UPI = qs["upi"]
