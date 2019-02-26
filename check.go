@@ -69,22 +69,6 @@ Options:
   -g         print the ACQTIME as seconds elapsed since GPS epoch`,
 }
 
-type Gap struct {
-	UPI    string    `json:"upi" xml:"upi"`
-	Before uint32    `json:"last" xml:"last"`
-	After  uint32    `json:"first" xml:"first"`
-	Starts time.Time `json:"dtstart" xml:"dtstart"`
-	Ends   time.Time `json:"dtend" xml:"dtend"`
-}
-
-func (g *Gap) Count() uint32 {
-	return g.After - g.Before
-}
-
-func (g *Gap) Duration() time.Duration {
-	return g.Ends.Sub(g.Starts)
-}
-
 func runCheckSource(cmd *cli.Command, args []string) error {
 	var start, end When
 	cmd.Flag.Var(&start, "s", "start")

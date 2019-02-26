@@ -153,14 +153,20 @@ func printWalkResults(ws io.Writer, rs map[string]*Coze) *Coze {
 
 func countFiles(queue <-chan *File) map[string]*Coze {
 	rs := make(map[string]*Coze)
-	fs := make(map[string]struct{})
 
-	var size uint64
 	for f := range queue {
 		k := f.String()
 		c, ok := rs[k]
 		if !ok {
-			c = &Coze{UPI: f.String()}
+			c = &Coze{
+				UPI:    f.String(),
+				First:  f.Sequence,
+				Last:   f.Sequence,
+				Starts: f.AcqTime,
+				Ends:   f.AcqTime,
+				seen:   make(map[uint32]struct{}),
+				// seen: 	[]uint32{f.Sequence},
+			}
 			rs[k] = c
 		}
 		c.Count++
@@ -174,16 +180,13 @@ func countFiles(queue <-chan *File) map[string]*Coze {
 			c.Last = f.Sequence
 		}
 
-		n := f.Name()
-		if _, ok := fs[n]; !ok && f.Valid() {
-			size += uint64(len([]byte(n)))
-			c.Uniq++
-			fs[n] = struct{}{}
-		}
-		if !f.Valid() {
+		if f.Valid() {
+			if !c.Seen(f.Sequence) {
+				c.Uniq++
+			}
+		} else {
 			c.Invalid++
 		}
 	}
-	fmt.Println("total bytes:", size)
 	return rs
 }

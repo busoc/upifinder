@@ -29,6 +29,22 @@ func (w *When) String() string {
 	return time.Now().Format(TimeFormat)
 }
 
+type Gap struct {
+	UPI    string    `json:"upi" xml:"upi"`
+	Before uint32    `json:"last" xml:"last"`
+	After  uint32    `json:"first" xml:"first"`
+	Starts time.Time `json:"dtstart" xml:"dtstart"`
+	Ends   time.Time `json:"dtend" xml:"dtend"`
+}
+
+func (g *Gap) Count() uint32 {
+	return g.After - g.Before
+}
+
+func (g *Gap) Duration() time.Duration {
+	return g.Ends.Sub(g.Starts)
+}
+
 type Coze struct {
 	UPI     string `json:"upi" xml:"upi"`
 	Count   uint64 `json:"total" xml:"total"`
@@ -41,7 +57,37 @@ type Coze struct {
 
 	First uint32 `json:"first" xml:"first"`
 	Last  uint32 `json:"last" xml:"last"`
+
+	// seen []uint32
+	seen map[uint32]struct{}
 }
+
+func (c *Coze) Seen(s uint32) bool {
+	_, ok := c.seen[s]
+	if !ok {
+		c.seen[s] = struct{}{}
+	}
+	return ok
+}
+
+// func (c *Coze) Seen(s uint32) bool {
+// 	if len(c.seen) == 0 {
+// 		c.seen = append(c.seen, s)
+// 		return false
+// 	}
+//   ix := sort.Search(len(c.seen), func(i int) bool {
+//     return s >= c.seen[i]
+//   })
+//   if ix < len(c.seen) && c.seen[ix] == s {
+//     return true
+//   }
+// 	if ix == len(c.seen)-1 {
+// 		c.seen = append(c.seen, s)
+// 	} else {
+// 		c.seen = append(c.seen[:ix], append([]uint32{s}, c.seen[ix:]...)...)
+// 	}
+//   return false
+// }
 
 func (c Coze) Duration() time.Duration {
 	return c.Ends.Sub(c.Starts)
@@ -71,6 +117,7 @@ type File struct {
 	Size     int64     `json:"size" xml:"size"`
 	Sequence uint32    `json:"sequence" xml:"sequence"`
 	AcqTime  time.Time `json:"dtstamp" xml:"dtstamp"`
+	RecTime  time.Time `json:"-" xml:"-"`
 }
 
 func (f *File) Compare(p *File) *Gap {
@@ -144,13 +191,8 @@ func parseFilename(p, upi string, i int64) (*File, error) {
 	}
 
 	if t, err := time.Parse("20060102150405", ps[len(ps)-3]+ps[len(ps)-2]); err == nil {
-		// var delta time.Duration
-		// if !acqtime {
-		// 	ps := strings.SplitN(ps[len(ps)-1], ".", 2)
-		// 	d, _ := strconv.ParseInt(strings.TrimLeft(ps[0], "0"), 10, 64)
-		// 	delta = time.Duration(d) * time.Minute
-		// }
-		// f.AcqTime = t.Add(delta)
+		d, _ := strconv.ParseInt(strings.TrimLeft(ps[0], "0"), 10, 64)
+		f.RecTime = t.Add(time.Duration(d) * time.Minute)
 		f.AcqTime = t
 	} else {
 		return nil, err
