@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/midbel/cli"
-	// "golang.org/x/sync/errgroup"
+	"golang.org/x/sync/errgroup"
 )
 
 var pushCommand = &cli.Command{
@@ -21,6 +21,8 @@ var pushCommand = &cli.Command{
 
 func runPush(cmd *cli.Command, args []string) error {
 	period := cmd.Flag.Int("d", 0, "period")
+	chunk := cmd.Flag.Int("c", 0, "send by chunk")
+	parallel := cmd.Flag.Bool("p", false, "run in parallel")
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
 	}
@@ -34,25 +36,27 @@ func runPush(cmd *cli.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := pushCount(*u, paths); err != nil {
-		return err
+	if !*parallel {
+		if err := pushCount(paths, *u, *chunk); err != nil {
+			return err
+		}
+		if err := pushCheck(paths, *u, *chunk); err != nil {
+			return err
+		}
+		return nil
+	} else {
+		var group errgroup.Group
+		group.Go(func() error {
+		 return pushCount(paths, *u, *chunk)
+		})
+		group.Go(func() error {
+		 return pushCheck(paths, *u, *chunk)
+		})
+		return group.Wait()
 	}
-	if err := pushCheck(*u, paths); err != nil {
-		return err
-	}
-	return nil
-
-	// var group errgroup.Group
-	// group.Go(func() error {
-	//  return pushCount(u, paths)
-	// })
-	// group.Go(func() error {
-	//  return pushCheck(*u, paths)
-	// })
-	// return group.Wait()
 }
 
-func pushCheck(u url.URL, paths []string) error {
+func pushCheck(paths []string, u url.URL, chunk int) error {
 	//report gaps
 	rs := checkFiles(walkFiles(paths, "", 1), 0, byUPI)
 	if len(rs) == 0 {
@@ -66,10 +70,32 @@ func pushCheck(u url.URL, paths []string) error {
 		Data: rs,
 	}
 	u.Path = path.Join(u.Path, "status") + "/"
-	return pushData(u.String(), c)
+
+	var err error
+	if chunk > 0 {
+		for i := 0; i < len(c.Data); i+=chunk {
+			offset := chunk
+			if n := len(c.Data[i:]); n < offset {
+				offset = n
+			}
+			cs := struct {
+				When time.Time `json:"dtstamp"`
+				Data []*Gap `json:"report"`
+			} {
+				When: c.When,
+				Data: c.Data[i:i+offset],
+			}
+			if err = pushData(u.String(), cs); err != nil {
+				break
+			}
+		}
+	} else {
+		err = pushData(u.String(), c)
+	}
+	return err
 }
 
-func pushCount(u url.URL, paths []string) error {
+func pushCount(paths []string, u url.URL, chunk int) error {
 	//count files and post reports
 	rs := countFiles(walkFiles(paths, "", 8))
 	if len(rs) == 0 {
@@ -83,7 +109,38 @@ func pushCount(u url.URL, paths []string) error {
 		Data: rs,
 	}
 	u.Path = path.Join(u.Path, "files") + "/"
-	return pushData(u.String(), c)
+
+	var err error
+	if chunk >= 0 {
+		keys := make([]string, len(c.Data))
+		var i int
+		for n := range c.Data {
+			keys[i] = n
+			i++
+		}
+		for i := 0; i < len(keys); i += chunk {
+			offset := chunk
+			if n := len(keys[i:]); n < chunk {
+				offset = n
+			}
+			cs := struct {
+				When time.Time        `json:"dtstamp"`
+				Data map[string]*Coze `json:"report"`
+			} {
+				When: c.When,
+				Data: make(map[string]*Coze),
+			}
+			for j := i; j < i+offset; j++ {
+				cs.Data[keys[j]] = c.Data[keys[j]]
+			}
+			if err = pushData(u.String(), cs); err != nil {
+				break
+			}
+		}
+	} else {
+		err = pushData(u.String(), c)
+	}
+	return err
 }
 
 func pushData(remote string, data interface{}) error {
