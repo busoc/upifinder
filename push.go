@@ -47,10 +47,10 @@ func runPush(cmd *cli.Command, args []string) error {
 	} else {
 		var group errgroup.Group
 		group.Go(func() error {
-		 return pushCount(paths, *u, *chunk)
+			return pushCount(paths, *u, *chunk)
 		})
 		group.Go(func() error {
-		 return pushCheck(paths, *u, *chunk)
+			return pushCheck(paths, *u, *chunk)
 		})
 		return group.Wait()
 	}
@@ -73,17 +73,17 @@ func pushCheck(paths []string, u url.URL, chunk int) error {
 
 	var err error
 	if chunk > 0 {
-		for i := 0; i < len(c.Data); i+=chunk {
+		for i := 0; i < len(c.Data); i += chunk {
 			offset := chunk
 			if n := len(c.Data[i:]); n < offset {
 				offset = n
 			}
 			cs := struct {
 				When time.Time `json:"dtstamp"`
-				Data []*Gap `json:"report"`
-			} {
+				Data []*Gap    `json:"report"`
+			}{
 				When: c.When,
-				Data: c.Data[i:i+offset],
+				Data: c.Data[i : i+offset],
 			}
 			if err = pushData(u.String(), cs); err != nil {
 				break
@@ -126,7 +126,7 @@ func pushCount(paths []string, u url.URL, chunk int) error {
 			cs := struct {
 				When time.Time        `json:"dtstamp"`
 				Data map[string]*Coze `json:"report"`
-			} {
+			}{
 				When: c.When,
 				Data: make(map[string]*Coze),
 			}

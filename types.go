@@ -1,0 +1,244 @@
+package main
+
+import (
+	"fmt"
+	"net/url"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+)
+
+type When struct {
+	time.Time
+}
+
+func (w *When) Set(v string) error {
+	t, err := time.Parse(TimeFormat, v)
+	if err == nil {
+		w.Time = t
+	}
+	return err
+}
+
+func (w *When) String() string {
+	if !w.IsZero() {
+		return w.Format(TimeFormat)
+	}
+	return time.Now().Format(TimeFormat)
+}
+
+type Coze struct {
+	UPI     string `json:"upi" xml:"upi"`
+	Count   uint64 `json:"total" xml:"total"`
+	Size    uint64 `json:"size" xml:"size"`
+	Invalid uint64 `json:"invalid" xml:"invalid"`
+	Uniq    uint64 `json:"uniq" xml:"uniq"`
+
+	Starts time.Time `json:"dtstart" xml:"dtstart"`
+	Ends   time.Time `json:"dtend" xml:"dtend"`
+
+	First uint32 `json:"first" xml:"first"`
+	Last  uint32 `json:"last" xml:"last"`
+}
+
+func (c Coze) Duration() time.Duration {
+	return c.Ends.Sub(c.Starts)
+}
+
+func (c Coze) Corrupted() float64 {
+	if c.Count == 0 || c.Invalid == 0 {
+		return 0
+	}
+	return 100 * (float64(c.Invalid) / float64(c.Count))
+}
+
+type ByFunc func(*File) string
+
+func byUPI(f *File) string {
+	return f.String()
+}
+
+func bySource(f *File) string {
+	return f.Source
+}
+
+type File struct {
+	Path     string    `json:"path" xml:"path"`
+	Source   string    `json:"source" xml:"source"`
+	Info     string    `json:"upi" xml:"upi"`
+	Size     int64     `json:"size" xml:"size"`
+	Sequence uint32    `json:"sequence" xml:"sequence"`
+	AcqTime  time.Time `json:"dtstamp" xml:"dtstamp"`
+}
+
+func (f *File) Compare(p *File) *Gap {
+	if p == nil || f.Sequence == p.Sequence+1 {
+		return nil
+	}
+	if p.AcqTime.After(f.AcqTime) {
+		return p.Compare(f)
+	}
+	g := Gap{
+		UPI:    p.String(),
+		Starts: p.AcqTime,
+		Ends:   f.AcqTime,
+		Before: p.Sequence,
+		After:  f.Sequence,
+	}
+	return &g
+}
+
+func (f *File) Name() string {
+	ps := strings.Split(filepath.Base(f.Path), "_")
+	return strings.Join(ps[:len(ps)-3], "_")
+}
+
+func (f *File) Valid() bool {
+	return filepath.Ext(f.Path) != ".bad"
+}
+
+func (f *File) String() string {
+	return fmt.Sprintf("%s/%s", f.Source, f.Info)
+}
+
+func parseFilename(p, upi string, i int64) (*File, error) {
+	// if !utf8.ValidString(p) {
+	// 	return nil, nil
+	// }
+	if !Keep(filepath.Base(p)) {
+		return nil, nil
+	}
+	ps := strings.Split(filepath.Base(p), "_")
+
+	f := File{
+		Path:   p,
+		Source: strings.TrimLeft(ps[0], "0"),
+		Size:   i,
+	}
+	if s, err := strconv.ParseInt(f.Source, 16, 8); err != nil {
+		return nil, err
+	} else {
+		var origins []int
+		switch ps[len(ps)-5] {
+		case "1", "2":
+			origins = OriImages
+		case "3":
+			origins = OriSciences
+		default:
+		}
+		if !acceptOrigin(int(s), origins) {
+			return nil, nil
+		}
+	}
+	if len(upi) == 0 {
+		f.Info = strings.Join(ps[1:len(ps)-5], "_")
+	} else {
+		f.Info = upi
+	}
+	if n, err := strconv.ParseUint(ps[len(ps)-4], 10, 32); err == nil {
+		f.Sequence = uint32(n)
+	} else {
+		return nil, err
+	}
+
+	if t, err := time.Parse("20060102150405", ps[len(ps)-3]+ps[len(ps)-2]); err == nil {
+		// var delta time.Duration
+		// if !acqtime {
+		// 	ps := strings.SplitN(ps[len(ps)-1], ".", 2)
+		// 	d, _ := strconv.ParseInt(strings.TrimLeft(ps[0], "0"), 10, 64)
+		// 	delta = time.Duration(d) * time.Minute
+		// }
+		// f.AcqTime = t.Add(delta)
+		f.AcqTime = t
+	} else {
+		return nil, err
+	}
+	return &f, nil
+}
+
+var (
+	OriImages   = []int{0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47}
+	OriSciences = []int{0x39, 0x40, 0x41, 0x51}
+)
+
+func acceptOrigin(o int, origins []int) bool {
+	if len(origins) == 0 {
+		return false
+	}
+	ix := sort.SearchInts(origins, o)
+	return ix < len(origins) && origins[ix] == o
+}
+
+type query struct {
+	Starts time.Time
+	Ends   time.Time
+	UPI    []string
+}
+
+func (q query) Keep(u string, s, e time.Time) bool {
+	if len(q.UPI) > 0 {
+		ix := sort.SearchStrings(q.UPI, u)
+		if ix >= len(q.UPI) || q.UPI[ix] != u {
+			return false
+		}
+	}
+	return q.Between(s) || q.Between(e)
+}
+
+func (q query) Between(t time.Time) bool {
+	if q.Starts.IsZero() || q.Ends.IsZero() {
+		return true
+	}
+	return t.Equal(q.Starts) || t.Equal(q.Ends) || (t.After(q.Starts) && t.Before(q.Ends))
+}
+
+func parseQuery(qs url.Values, interval time.Duration) (*query, error) {
+	var (
+		q   query
+		err error
+	)
+	q.Starts, err = parseTime(qs.Get("dtstart"))
+	if err != nil {
+		return nil, err
+	}
+	q.Ends, err = parseTime(qs.Get("dtend"))
+	if err != nil {
+		return nil, err
+	}
+	if !q.Starts.IsZero() && !q.Ends.IsZero() {
+		if q.Starts.Equal(q.Ends) || q.Starts.After(q.Ends) {
+			return nil, fmt.Errorf("invalid starts/ends")
+		}
+		if q.Ends.Sub(q.Starts) > interval {
+			return nil, fmt.Errorf("interval too large")
+		}
+	}
+	q.UPI = qs["upi"]
+	sort.Strings(q.UPI)
+
+	return &q, nil
+}
+
+func parseTime(s string) (time.Time, error) {
+	var (
+		t   time.Time
+		err error
+	)
+	if s == "" {
+		return t, err
+	}
+	formats := []string{
+		time.RFC3339,
+		"2006-01-02",
+		"2006-01-02 15:04:05",
+	}
+	for _, f := range formats {
+		t, err = time.Parse(f, s)
+		if err == nil {
+			return t, nil
+		}
+	}
+	return t, fmt.Errorf("no suitable format found for %q", s)
+}

@@ -65,50 +65,6 @@ $ upifinder -u XYZ -s 2018-06-04 -e 2018-06-11 /data/images/playback/38
 Developed with %s by GC`,
 }
 
-type When struct {
-	time.Time
-}
-
-func (w *When) Set(v string) error {
-	t, err := time.Parse(TimeFormat, v)
-	if err == nil {
-		w.Time = t
-	}
-	return err
-}
-
-func (w *When) String() string {
-	if !w.IsZero() {
-		return w.Format(TimeFormat)
-	}
-	return time.Now().Format(TimeFormat)
-}
-
-type Coze struct {
-	UPI     string `json:"upi" xml:"upi"`
-	Count   uint64 `json:"total" xml:"total"`
-	Size    uint64 `json:"size" xml:"size"`
-	Invalid uint64 `json:"invalid" xml:"invalid"`
-	Uniq    uint64 `json:"uniq" xml:"uniq"`
-
-	Starts time.Time `json:"dtstart" xml:"dtstart"`
-	Ends   time.Time `json:"dtend" xml:"dtend"`
-
-	First uint32 `json:"first" xml:"first"`
-	Last  uint32 `json:"last" xml:"last"`
-}
-
-func (c Coze) Duration() time.Duration {
-	return c.Ends.Sub(c.Starts)
-}
-
-func (c Coze) Corrupted() float64 {
-	if c.Count == 0 || c.Invalid == 0 {
-		return 0
-	}
-	return 100 * (float64(c.Invalid) / float64(c.Count))
-}
-
 func runWalk(cmd *cli.Command, args []string) error {
 	cmd.Desc = fmt.Sprintf(cmd.Desc, "\u2764")
 
@@ -199,6 +155,7 @@ func countFiles(queue <-chan *File) map[string]*Coze {
 	rs := make(map[string]*Coze)
 	fs := make(map[string]struct{})
 
+	var size uint64
 	for f := range queue {
 		k := f.String()
 		c, ok := rs[k]
@@ -219,6 +176,7 @@ func countFiles(queue <-chan *File) map[string]*Coze {
 
 		n := f.Name()
 		if _, ok := fs[n]; !ok && f.Valid() {
+			size += uint64(len([]byte(n)))
 			c.Uniq++
 			fs[n] = struct{}{}
 		}
@@ -226,5 +184,6 @@ func countFiles(queue <-chan *File) map[string]*Coze {
 			c.Invalid++
 		}
 	}
+	fmt.Println("total bytes:", size)
 	return rs
 }

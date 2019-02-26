@@ -8,10 +8,8 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"time"
 
@@ -83,7 +81,7 @@ const (
 	filesReport  = "files"
 )
 
-const MaxBodySize = 16<<10
+const MaxBodySize = 16 << 10
 
 const DefaultInterval = time.Duration(24*30) * time.Hour
 
@@ -231,78 +229,6 @@ func viewReports(hist *History, interval time.Duration) Handler {
 		return data, nil
 	}
 	return f
-}
-
-type query struct {
-	Starts time.Time
-	Ends   time.Time
-	UPI    []string
-}
-
-func (q query) Keep(u string, s, e time.Time) bool {
-	if len(q.UPI) > 0 {
-		ix := sort.SearchStrings(q.UPI, u)
-		if ix >= len(q.UPI) || q.UPI[ix] != u {
-			return false
-		}
-	}
-	return q.Between(s) || q.Between(e)
-}
-
-func (q query) Between(t time.Time) bool {
-	if q.Starts.IsZero() || q.Ends.IsZero() {
-		return true
-	}
-	return t.Equal(q.Starts) || t.Equal(q.Ends) || (t.After(q.Starts) && t.Before(q.Ends))
-}
-
-func parseQuery(qs url.Values, interval time.Duration) (*query, error) {
-	var (
-		q   query
-		err error
-	)
-	q.Starts, err = parseTime(qs.Get("dtstart"))
-	if err != nil {
-		return nil, err
-	}
-	q.Ends, err = parseTime(qs.Get("dtend"))
-	if err != nil {
-		return nil, err
-	}
-	if !q.Starts.IsZero() && !q.Ends.IsZero() {
-		if q.Starts.Equal(q.Ends) || q.Starts.After(q.Ends) {
-			return nil, fmt.Errorf("invalid starts/ends")
-		}
-		if q.Ends.Sub(q.Starts) > interval {
-			return nil, fmt.Errorf("interval too large")
-		}
-	}
-	q.UPI = qs["upi"]
-	sort.Strings(q.UPI)
-
-	return &q, nil
-}
-
-func parseTime(s string) (time.Time, error) {
-	var (
-		t   time.Time
-		err error
-	)
-	if s == "" {
-		return t, err
-	}
-	formats := []string{
-		time.RFC3339,
-		"2006-01-02",
-		"2006-01-02 15:04:05",
-	}
-	for _, f := range formats {
-		t, err = time.Parse(f, s)
-		if err == nil {
-			return t, nil
-		}
-	}
-	return t, fmt.Errorf("no suitable format found for %q", s)
 }
 
 func negociateStructured(h Handler) http.Handler {
