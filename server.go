@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -58,19 +59,58 @@ func runServer(cmd *cli.Command, args []string) error {
 	defer db.Close()
 	hist := &History{db}
 
-	r := mux.NewRouter()
-	r.Handle("/{instance}/{type}/{mode}/archives/", negociateStructured(listFiles(c.Datadir))).HeadersRegexp("Accept", "application/(xml|json)").Methods(http.MethodGet)
-	r.Handle("/", negociateStructured(viewNodes(hist))).HeadersRegexp("Accept", "application/(xml|json)").Methods(http.MethodGet)
-	r.Handle("/{instance}/{type}/{mode}/{report}/", negociateStructured(viewReports(hist))).HeadersRegexp("Accept", "application/(xml|json)").Methods(http.MethodGet)
-	// r.Handle("/{instance}/{type}/{mode}/{report}/{UPI}", negociateStructured(viewReport(hist))).HeadersRegexp("Accept", "application/(xml|json)").Methods(http.MethodGet)
-	r.Handle("/{instance}/{type}/{mode}/{report}/", negociateCSV(viewReports(hist))).Headers("Accept", "text/csv").Methods(http.MethodGet)
-	// r.Handle("/{instance}/{type}/{mode}/{report}/{UPI}", negociateCSV(viewReport(hist))).Headers("Accept", "text/csv").Methods(http.MethodGet)
-	r.Handle("/{instance}/{type}/{mode}/{report}/", negociateStructured(storeReports(hist))).Headers("Content-Type", "application/json").Methods(http.MethodPost)
+	h := setupHandlers(hist, c.Datadir)
 	if *dev {
-		h := handlers.LoggingHandler(os.Stderr, handlers.CompressHandler(r))
-		return http.ListenAndServe(c.Addr, handlers.CORS()(h))
+		h = handlers.LoggingHandler(os.Stderr, h)
 	}
-	return http.ListenAndServe(c.Addr, r)
+	return http.ListenAndServe(c.Addr, h)
+}
+
+const (
+	reportURL = "/{instance}/{type}/{mode}/{report}/"
+	filesURL  = "/{instance}/{type}/{mode}/archives/"
+)
+
+const (
+	acceptCSV    = "text/csv"
+	acceptJSON   = "application/json"
+	acceptStruct = "application/(xml|json)"
+)
+
+const (
+	statusReport = "status"
+	filesReport  = "files"
+)
+
+const MaxBodySize = 16<<10
+
+func setupHandlers(hist *History, datadir string) http.Handler {
+	cs := []string{
+		acceptCSV,
+		acceptStruct,
+	}
+	r := mux.NewRouter()
+	for _, c := range cs {
+		var h http.Handler
+		switch c {
+		case acceptCSV:
+			h = negociateCSV(viewReports(hist))
+		case acceptStruct:
+			h = negociateStructured(viewReports(hist))
+		}
+		if h == nil {
+			continue
+		}
+		r.Handle(reportURL, h).HeadersRegexp("Accept", c).Methods(http.MethodGet)
+	}
+	s := negociateStructured(storeReports(hist))
+	r.Handle(reportURL, s).Headers("Content-Type", acceptJSON).Methods(http.MethodPost, http.MethodOptions)
+
+	f := negociateStructured(listFiles(datadir))
+	r.Handle(filesURL, f).HeadersRegexp("Accept", acceptStruct).Methods(http.MethodGet, http.MethodOptions)
+
+	rx := handlers.CompressHandler(r)
+	return handlers.CORS()(rx)
 }
 
 func listFiles(datadir string) Handler {
@@ -129,22 +169,22 @@ func storeReports(hist *History) Handler {
 		key := fmt.Sprintf("%s/%s/%s/%s", vars["instance"], vars["type"], vars["mode"], vars["report"])
 
 		var err error
-		switch report := vars["report"]; report {
-		case "status":
+		switch report, body := vars["report"], io.LimitReader(r.Body, MaxBodySize); report {
+		case statusReport:
 			c := struct {
 				When time.Time `json:"dtstamp"`
 				Data []*Gap    `json:"report"`
 			}{}
-			if err = json.NewDecoder(r.Body).Decode(&c); err != nil {
+			if err = json.NewDecoder(body).Decode(&c); err != nil {
 				break
 			}
 			err = hist.StoreStatus(key, c.Data, c.When)
-		case "files":
+		case filesReport:
 			c := struct {
 				When time.Time        `json:"dtstamp"`
 				Data map[string]*Coze `json:"report"`
 			}{}
-			if err = json.NewDecoder(r.Body).Decode(&c); err != nil {
+			if err = json.NewDecoder(body).Decode(&c); err != nil {
 				break
 			}
 			err = hist.StoreFiles(key, c.Data, c.When)
@@ -171,9 +211,9 @@ func viewReports(hist *History) Handler {
 
 		var data interface{}
 		switch report := vars["report"]; report {
-		case "files":
+		case filesReport:
 			data, err = hist.ViewFiles(key, q)
-		case "status":
+		case statusReport:
 			data, err = hist.ViewStatus(key, q)
 		default:
 			return nil, ErrNotFound(report)

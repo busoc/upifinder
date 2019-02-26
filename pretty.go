@@ -53,7 +53,7 @@ func Keep(n string) bool {
 	str := []byte(n)
 	for i := 0; i < len(str); i++ {
 		b := str[i]
-		k := ('A' <= b && b <= 'Z') || ('a' <= b && b <= 'z' ) || ('0' <= b && b <= '9') || b == '-' || b == '_' || b == '.'
+		k := ('A' <= b && b <= 'Z') || ('a' <= b && b <= 'z') || ('0' <= b && b <= '9') || b == '-' || b == '_' || b == '.'
 		if !k {
 			return k
 		}
