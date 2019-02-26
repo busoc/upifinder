@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"archive/zip"
+	"bufio"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -11,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
+	"sort"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -137,6 +138,29 @@ func findFiles(dir, upi string, queue chan<- *File) error {
 			for f := range fs {
 				queue <- f
 			}
+		case ".lst":
+			r, err := os.Open(p)
+			if err != nil {
+				return err
+			}
+			defer r.Close()
+
+			s := bufio.NewScanner(r)
+			s.Split(bufio.ScanLines)
+			for i := 0; s.Scan(); i++ {
+				p := s.Text()
+				if len(p) == 0 || filepath.Ext(p) == ".xml" {
+					continue
+				}
+				f, err := parseFilename(p, upi, 0)
+				if err != nil {
+					continue
+				}
+				if f != nil {
+					queue <- f
+				}
+			}
+			return s.Err()
 		default:
 			f, err := parseFilename(p, upi, i.Size())
 			if err != nil {
@@ -216,7 +240,10 @@ func scanTar(p, upi string) (<-chan *File, error) {
 }
 
 func parseFilename(p, upi string, i int64) (*File, error) {
-	if !utf8.ValidString(p) {
+	// if !utf8.ValidString(p) {
+	// 	return nil, nil
+	// }
+	if !Keep(filepath.Base(p)) {
 		return nil, nil
 	}
 	ps := strings.Split(filepath.Base(p), "_")
@@ -229,7 +256,15 @@ func parseFilename(p, upi string, i int64) (*File, error) {
 	if s, err := strconv.ParseInt(f.Source, 16, 8); err != nil {
 		return nil, err
 	} else {
-		if s < 0x33 || s > 0x55 {
+		var origins []int
+		switch ps[len(ps)-5] {
+		case "1", "2":
+			origins = OriImages
+		case "3":
+			origins = OriSciences
+		default:
+		}
+		if !acceptOrigin(int(s), origins) {
 			return nil, nil
 		}
 	}
@@ -257,4 +292,17 @@ func parseFilename(p, upi string, i int64) (*File, error) {
 		return nil, err
 	}
 	return &f, nil
+}
+
+var (
+	OriImages =   []int{0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47}
+	OriSciences = []int{0x39, 0x40, 0x41, 0x51}
+)
+
+func acceptOrigin(o int, origins []int) bool {
+	if len(origins) == 0 {
+		return false
+	}
+	ix := sort.SearchInts(origins, o)
+	return ix < len(origins) && origins[ix] == o
 }
