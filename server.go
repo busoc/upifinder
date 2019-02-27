@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"encoding/csv"
 	"encoding/json"
 	"encoding/xml"
@@ -81,7 +82,7 @@ const (
 	filesReport  = "files"
 )
 
-const MaxBodySize = 16 << 10
+const MaxBodySize = 4 << 20
 
 const DefaultInterval = time.Duration(24*30) * time.Hour
 
@@ -105,6 +106,9 @@ func setupHandlers(hist *History, datadir string, interval int) http.Handler {
 		}
 		r.Handle(reportURL, h).HeadersRegexp("Accept", c).Methods(http.MethodGet)
 	}
+	n := negociateStructured(viewNodes(hist))
+	r.Handle("/", n).HeadersRegexp("Accept", acceptStruct).Methods(http.MethodGet, http.MethodOptions)
+
 	s := negociateStructured(storeReports(hist))
 	r.Handle(reportURL, s).Headers("Content-Type", acceptJSON).Methods(http.MethodPost, http.MethodOptions)
 
@@ -170,8 +174,19 @@ func storeReports(hist *History) Handler {
 		vars := mux.Vars(r)
 		key := fmt.Sprintf("%s/%s/%s/%s", vars["instance"], vars["type"], vars["mode"], vars["report"])
 
-		var err error
-		switch report, body := vars["report"], io.LimitReader(r.Body, MaxBodySize); report {
+		var (
+			err error
+			br  io.Reader
+		)
+		if r.Header.Get("content-encoding") == "gzip" {
+			br, err = gzip.NewReader(r.Body)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			br = r.Body
+		}
+		switch report, body := vars["report"], io.LimitReader(br, MaxBodySize); report {
 		case statusReport:
 			c := struct {
 				When time.Time `json:"dtstamp"`

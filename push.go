@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -69,7 +70,7 @@ func pushCheck(paths []string, u url.URL, chunk int) error {
 		When: time.Now(),
 		Data: rs,
 	}
-	u.Path = path.Join(u.Path, "status") + "/"
+	u.Path = path.Join(u.Path, statusReport) + "/"
 
 	var err error
 	if chunk > 0 {
@@ -108,10 +109,10 @@ func pushCount(paths []string, u url.URL, chunk int) error {
 		When: time.Now(),
 		Data: rs,
 	}
-	u.Path = path.Join(u.Path, "files") + "/"
+	u.Path = path.Join(u.Path, filesReport) + "/"
 
 	var err error
-	if chunk >= 0 {
+	if chunk > 0 {
 		keys := make([]string, len(c.Data))
 		var i int
 		for n := range c.Data {
@@ -144,14 +145,25 @@ func pushCount(paths []string, u url.URL, chunk int) error {
 }
 
 func pushData(remote string, data interface{}) error {
-	var w bytes.Buffer
-	if err := json.NewEncoder(&w).Encode(data); err != nil {
+	var buf bytes.Buffer
+	w := gzip.NewWriter(&buf)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
 		return err
 	}
-	rs, err := http.Post(remote, "application/json", &w)
+	if err := w.Close(); err != nil {
+		return err
+	}
+	r, err := http.NewRequest(http.MethodPost, remote, &buf)
 	if err != nil {
 		return err
 	}
+	r.Header.Set("content-encoding", "gzip")
+	r.Header.Set("content-type", "application/json")
+	// rs, err := http.Post(remote, "application/json", &w)
+	// if err != nil {
+	// 	return err
+	// }
+	rs, err := http.DefaultClient.Do(r)
 	defer rs.Body.Close()
 	if rs.StatusCode >= http.StatusBadRequest {
 		return fmt.Errorf(http.StatusText(rs.StatusCode))
