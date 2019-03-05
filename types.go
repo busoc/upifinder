@@ -45,6 +45,27 @@ func (g *Gap) Duration() time.Duration {
 	return g.Ends.Sub(g.Starts)
 }
 
+type Range struct {
+	First uint32
+	Last  uint32
+}
+
+func (r *Range) Total() uint32 {
+	return r.Last - r.First
+}
+
+func (r *Range) Has(v uint32) bool {
+	return r.First <= v && r.Last >= v
+}
+
+func (r *Range) String() string {
+	return fmt.Sprintf("[%d, %d]", r.First, r.Last)
+}
+
+func single(v uint32) *Range {
+	return &Range{v, v}
+}
+
 type Coze struct {
 	UPI     string `json:"upi" xml:"upi"`
 	Count   uint64 `json:"total" xml:"total"`
@@ -59,16 +80,82 @@ type Coze struct {
 	Last  uint32 `json:"last" xml:"last"`
 
 	// seen []uint32
-	seen map[uint32]struct{}
+	seen []*Range
+	// seen map[uint32]struct{}
 }
 
-func (c *Coze) Seen(s uint32) bool {
-	_, ok := c.seen[s]
-	if !ok {
-		c.seen[s] = struct{}{}
+func (c *Coze) Update(f *File) {
+	c.Count++
+	c.Size += uint64(f.Size)
+	if c.Starts.IsZero() || c.Starts.Equal(f.AcqTime) || c.Starts.After(f.AcqTime) {
+		c.Starts = f.AcqTime
+		c.First = f.Sequence
 	}
-	return ok
+	if c.Ends.IsZero() || c.Ends.Equal(f.AcqTime) || c.Ends.Before(f.AcqTime) {
+		c.Ends = f.AcqTime
+		c.Last = f.Sequence
+	}
+
+	if f.Valid() {
+		if !c.Seen(f.Sequence) {
+			c.Uniq++
+		}
+	} else {
+		c.Invalid++
+	}
 }
+
+func (c *Coze) Seen(v uint32) bool {
+	n := len(c.seen)
+	if n == 0 {
+		c.seen = append(c.seen, single(v))
+		return false
+	}
+	ix := sort.Search(n, func(i int) bool {
+		return c.seen[i].Last >= v
+	})
+	if ix >= n {
+		if d := v - c.seen[n-1].Last; d == 1 {
+			c.seen[n-1].Last = v
+		} else {
+			c.seen = append(c.seen, single(v))
+		}
+		return false
+	}
+	if c.seen[ix].Has(v) {
+		return true
+	}
+	if d := c.seen[ix].First - v; d == 1 {
+		c.seen[ix].First = v
+		if ix > 0 {
+			if d := v - c.seen[ix-1].Last; d == 1 {
+				c.seen[ix].First = c.seen[ix-1].First
+				c.seen = append(c.seen[:ix-1], c.seen[ix:]...)
+			}
+		}
+		return false
+	}
+	if ix == 0 {
+		c.seen = append([]*Range{single(v)}, c.seen...)
+		return false
+	} else {
+		if d := v - c.seen[ix-1].Last; d == 1 {
+			c.seen[ix-1].Last = v
+		} else {
+			c.seen = append(c.seen[:ix], append([]*Range{single(v)}, c.seen[ix:]...)...)
+		}
+		return false
+	}
+	return true
+}
+
+// func (c *Coze) Seen(s uint32) bool {
+// 	_, ok := c.seen[s]
+// 	if !ok {
+// 		c.seen[s] = struct{}{}
+// 	}
+// 	return ok
+// }
 
 // func (c *Coze) Seen(s uint32) bool {
 // 	if len(c.seen) == 0 {
@@ -88,6 +175,48 @@ func (c *Coze) Seen(s uint32) bool {
 // 	}
 //   return false
 // }
+
+func (c Coze) MissingRange() []*Range {
+	n := len(c.seen)
+	if n == 0 {
+		return nil
+	}
+	var rs []*Range
+	for i := 1; i < n; i++ {
+		r := Range{First: c.seen[i-1].Last, Last: c.seen[i].First}
+		rs = append(rs, &r)
+	}
+	return rs
+}
+
+func (c Coze) Total() uint32 {
+	var t uint32
+	for _, r := range c.seen {
+		t += r.Total()
+	}
+	return t+1
+}
+
+func (c Coze) Range() (uint32, uint32) {
+	n := len(c.seen)
+	if n == 0 {
+		return 0, 0
+	}
+	first, last := c.seen[0], c.seen[n-1]
+	return first.First, last.Last
+}
+
+func (c Coze) Missing() uint64 {
+	if len(c.seen) == 0 {
+		return 0
+	}
+	var m uint64
+	for i := 1; i < len(c.seen); i++ {
+		d := c.seen[i].First - c.seen[i-1].Last
+		m += uint64(d-1)
+	}
+	return m
+}
 
 func (c Coze) Duration() time.Duration {
 	return c.Ends.Sub(c.Starts)

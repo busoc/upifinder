@@ -48,14 +48,15 @@ var commands = []*cli.Command{
 	srvCommand,
 	walkCommand,
 	pushCommand,
+	inspectCommand,
 }
 
 func init() {
 	log.SetFlags(0)
 	log.SetOutput(os.Stdout)
 
-	cli.Version = "0.5.0"
-	cli.BuildTime = "2019-01-30 12:00:00"
+	cli.Version = "0.6.0"
+	cli.BuildTime = "2019-02-27 08:20:00"
 }
 
 func main() {

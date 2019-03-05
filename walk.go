@@ -109,6 +109,7 @@ func runWalk(cmd *cli.Command, args []string) error {
 				strconv.FormatUint(c.Size>>20, 10),
 				strconv.FormatUint(c.Invalid, 10),
 				strconv.FormatFloat(c.Corrupted(), 'f', -1, 64),
+				strconv.FormatUint(c.Missing(), 10),
 			}
 			if err := w.Write(row); err != nil {
 				return err
@@ -122,12 +123,12 @@ func runWalk(cmd *cli.Command, args []string) error {
 }
 
 func printWalkResults(ws io.Writer, rs map[string]*Coze) *Coze {
-	const row = "%-s\t%d\t%d\t%s\t%d\t%3.2f%%\t%s\t%s\t%d\t%d"
+	const row = "%-s\t%d\t%d\t%s\t%d\t%3.2f%%\t%s\t%s\t%d\t%d\t%d"
 	w := tabwriter.NewWriter(ws, 16, 2, 4, ' ', 0)
 	defer w.Flush()
 
 	logger := log.New(w, "", 0)
-	logger.Println("UPI\tFiles\tUniq\tSize\tInvalid\tratio\tstarts\tends\tfirst\tlast")
+	logger.Println("UPI\tFiles\tUniq\tSize\tInvalid\tRatio\tStarts\tEnds\tFirst\tLast\tMissing")
 
 	var (
 		z  Coze
@@ -146,7 +147,20 @@ func printWalkResults(ws io.Writer, rs map[string]*Coze) *Coze {
 		z.Uniq += c.Uniq
 
 		starts, ends := c.Starts.Format(time.RFC3339), c.Ends.Format(time.RFC3339)
-		logger.Printf(row, Transform(c.UPI), c.Count, c.Uniq, prettySize(c.Size), c.Invalid, c.Corrupted(), starts, ends, c.First, c.Last)
+		first, last := c.Range()
+		logger.Printf(row,
+			Transform(c.UPI),
+			c.Count,
+			c.Uniq,
+			prettySize(c.Size),
+			c.Invalid,
+			c.Corrupted(),
+			starts,
+			ends,
+			first, // before was c.First
+			last, // before was c.Last
+			c.Missing(),
+		)
 	}
 	return &z
 }
@@ -164,29 +178,30 @@ func countFiles(queue <-chan *File) map[string]*Coze {
 				Last:   f.Sequence,
 				Starts: f.AcqTime,
 				Ends:   f.AcqTime,
-				seen:   make(map[uint32]struct{}),
+				// seen:   make(map[uint32]struct{}),
 				// seen: 	[]uint32{f.Sequence},
 			}
 			rs[k] = c
 		}
-		c.Count++
-		c.Size += uint64(f.Size)
-		if c.Starts.IsZero() || c.Starts.After(f.AcqTime) {
-			c.Starts = f.AcqTime
-			c.First = f.Sequence
-		}
-		if c.Ends.IsZero() || c.Ends.Before(f.AcqTime) {
-			c.Ends = f.AcqTime
-			c.Last = f.Sequence
-		}
-
-		if f.Valid() {
-			if !c.Seen(f.Sequence) {
-				c.Uniq++
-			}
-		} else {
-			c.Invalid++
-		}
+		c.Update(f)
+		// c.Count++
+		// c.Size += uint64(f.Size)
+		// if c.Starts.IsZero() || c.Starts.After(f.AcqTime) {
+		// 	c.Starts = f.AcqTime
+		// 	c.First = f.Sequence
+		// }
+		// if c.Ends.IsZero() || c.Ends.Before(f.AcqTime) {
+		// 	c.Ends = f.AcqTime
+		// 	c.Last = f.Sequence
+		// }
+		//
+		// if f.Valid() {
+		// 	if !c.Seen(f.Sequence) {
+		// 		c.Uniq++
+		// 	}
+		// } else {
+		// 	c.Invalid++
+		// }
 	}
 	return rs
 }
