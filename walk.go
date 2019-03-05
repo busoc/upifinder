@@ -158,7 +158,7 @@ func printWalkResults(ws io.Writer, rs map[string]*Coze) *Coze {
 			starts,
 			ends,
 			first, // before was c.First
-			last, // before was c.Last
+			last,  // before was c.Last
 			c.Missing(),
 		)
 	}

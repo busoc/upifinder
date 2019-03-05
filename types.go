@@ -176,7 +176,11 @@ func (c *Coze) Seen(v uint32) bool {
 //   return false
 // }
 
-func (c Coze) MissingRange() []*Range {
+func (c Coze) Ranges() []*Range {
+	return c.seen
+}
+
+func (c Coze) MissingRanges() []*Range {
 	n := len(c.seen)
 	if n == 0 {
 		return nil
@@ -194,7 +198,7 @@ func (c Coze) Total() uint32 {
 	for _, r := range c.seen {
 		t += r.Total()
 	}
-	return t+1
+	return t + 1
 }
 
 func (c Coze) Range() (uint32, uint32) {
@@ -213,7 +217,7 @@ func (c Coze) Missing() uint64 {
 	var m uint64
 	for i := 1; i < len(c.seen); i++ {
 		d := c.seen[i].First - c.seen[i-1].Last
-		m += uint64(d-1)
+		m += uint64(d - 1)
 	}
 	return m
 }
