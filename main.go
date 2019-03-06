@@ -42,8 +42,7 @@ Use {{.Name}} [command] -h for more information about its usage.
 `
 
 var commands = []*cli.Command{
-	checkUPICommand,
-	checkSourceCommand,
+	checkCommand,
 	digestCommand,
 	srvCommand,
 	walkCommand,

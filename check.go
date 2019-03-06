@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -14,37 +15,11 @@ import (
 	"github.com/midbel/cli"
 )
 
-var checkSourceCommand = &cli.Command{
-	Usage: "check-src [-d] [-s] [-e] [-i] [-f] [-g] [-k] <archive,...>",
-	Short: "provide the number of missing files in the archive by sources",
-	Run:   runCheckSource,
-	Desc: `"check-src" traverse the Hadock archive to find gap(s) of files by sources.
-
-The period of time is selected by upifinder with the following rules (depending
-of the value given to the command line):
-
-  * [s] + [e] : walk from START to END date
-  * [s] + [d] : walk from START to START + DAYS date
-  * [e] + [d] : walk from END - DAYS to END date
-  * [d]       : walk from TODAY - DAYS to TODAY
-  * default   : walk recursively on the given path(s)
-
-Options:
-
-  -s START   only count files created after START
-  -e END     only count files created before END
-  -d DAYS    only count files created during a period of DAYS
-  -i TIME    only consider gap with at least TIME duration
-  -f FORMAT  print the results in the given format ("", csv, column)
-  -k         keep invalid files in the count of gaps
-  -g         print the ACQTIME as seconds elapsed since GPS epoch`,
-}
-
-var checkUPICommand = &cli.Command{
-	Usage: "check-upi [-d] [-s] [-e] [-u] [-i] [-f] [-g] [-k] <archive,...>",
+var checkCommand = &cli.Command{
+	Usage: "check-upi [-b] [-d] [-s] [-e] [-u] [-i] [-f] [-g] [-k] <archive,...>",
 	Alias: []string{"check"},
 	Short: "provide the number of missing files in the archive by UPI",
-	Run:   runCheckUPI,
+	Run:   runCheck,
 	Desc: `"check-upi" (check) traverse the Hadock archive to find gap(s) of files by UPI.
 
 If no UPI is given, "check" will collect the list of missing files for each UPI
@@ -61,54 +36,30 @@ of the value given to the command line):
 
 Options:
 
+  -b BY      check gaps by upi or by source (default by upi)
   -u UPI     only count files for the given UPI
   -s START   only count files created after START
   -e END     only count files created before END
   -d DAYS    only count files created during a period of DAYS
   -i TIME    only consider gap with at least TIME duration
   -f FORMAT  print the results in the given format ("", csv, column)
+  -a         keep all gaps even when a later playback/replay refill those
   -k         keep invalid files in the count of gaps
   -g         print the ACQTIME as seconds elapsed since GPS epoch`,
 }
 
-func runCheckSource(cmd *cli.Command, args []string) error {
+func runCheck(cmd *cli.Command, args []string) error {
 	var start, end When
 	cmd.Flag.Var(&start, "s", "start")
 	cmd.Flag.Var(&end, "e", "end")
-	// acqtime := cmd.Flag.Bool("a", false, "acquisition time")
-	period := cmd.Flag.Int("d", 0, "period")
-	interval := cmd.Flag.Duration("i", 0, "interval")
-	format := cmd.Flag.String("f", "", "format")
-	keep := cmd.Flag.Bool("k", false, "keep invalid files")
-	toGPS := cmd.Flag.Bool("g", false, "convert time to GPS")
-
-	if err := cmd.Flag.Parse(args); err != nil {
-		return err
-	}
-
-	if cmd.Flag.NArg() == 0 {
-		cmd.Help()
-	}
-
-	paths, err := listPaths(cmd.Flag.Args(), *period, start.Time, end.Time)
-	if err != nil {
-		return err
-	}
-	rs := checkFiles(walkFiles(paths, "", 1), *interval, *keep, bySource)
-	return reportCheckResults(rs, *format, *toGPS)
-}
-
-func runCheckUPI(cmd *cli.Command, args []string) error {
-	var start, end When
-	cmd.Flag.Var(&start, "s", "start")
-	cmd.Flag.Var(&end, "e", "end")
-	// acqtime := cmd.Flag.Bool("a", false, "acquisition time")
+	by := cmd.Flag.String("b", "", "by")
 	upi := cmd.Flag.String("u", "", "upi")
 	period := cmd.Flag.Int("d", 0, "period")
 	interval := cmd.Flag.Duration("i", 0, "interval")
 	format := cmd.Flag.String("f", "", "format")
 	toGPS := cmd.Flag.Bool("g", false, "convert time to GPS")
 	keep := cmd.Flag.Bool("k", false, "keep invalid files")
+	all := cmd.Flag.Bool("a", false, "keep all gaps even when refilled")
 
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
@@ -122,12 +73,21 @@ func runCheckUPI(cmd *cli.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	rs := checkFiles(walkFiles(paths, *upi, 1), *interval, *keep, byUPI)
+	var byf ByFunc
+	switch strings.ToLower(*by) {
+	case "upi", "":
+		byf = byUPI
+	case "source", "src":
+		byf = bySource
+	default:
+		return fmt.Errorf("unsupported %s", *by)
+	}
+	rs := checkFiles(walkFiles(paths, *upi, 1), *interval, *keep, *all, byf)
 	return reportCheckResults(rs, *format, *toGPS)
 }
 
-func checkFiles(files <-chan *File, interval time.Duration, keep bool, by ByFunc) []*Gap {
-	rs := make([]*Gap, 0, 1000)
+func checkFiles(files <-chan *File, interval time.Duration, keep, all bool, by ByFunc) []*Gap {
+	rs := make(map[string][]*Gap)
 	cs := make(map[string]*File)
 	for f := range files {
 		if !f.Valid() && !keep {
@@ -135,15 +95,60 @@ func checkFiles(files <-chan *File, interval time.Duration, keep bool, by ByFunc
 		}
 		n := by(f)
 		if p, ok := cs[n]; ok && f.Sequence > p.Sequence {
-			g := f.Compare(p)
-			if (g != nil && g.Count() > 0) && (interval == 0 || g.Duration() >= interval) {
-				rs = append(rs, g)
+			var skip bool
+			if !all {
+				if gs, ok := rs[n]; ok && len(gs) > 0 {
+					ix := sort.Search(len(gs), func(i int) bool {
+						return gs[i].After >= f.Sequence
+					})
+					if ix < len(gs) && f.Sequence-gs[ix].Before == 1 {
+						gs[ix].Before = f.Sequence
+						if d := gs[ix].After - gs[ix].Before; d == 1 {
+							if ix == len(gs)-1 {
+								rs[n] = gs[:ix]
+							} else {
+								rs[n] = append(gs[:ix], gs[ix+1:]...)
+							}
+						}
+						skip = true
+					}
+				}
+			}
+			if !skip {
+				g := f.Compare(p)
+				if (g != nil && g.Count() > 0) && (interval == 0 || g.Duration() >= interval) {
+					rs[n] = append(rs[n], g)
+				}
 			}
 		}
 		cs[n] = f
 	}
-	return rs
+	var gs []*Gap
+	for _, vs := range rs {
+		gs = append(gs, vs...)
+	}
+	return gs
 }
+
+//
+// func checkFiles(files <-chan *File, interval time.Duration, keep bool, by ByFunc) []*Gap {
+// 	rs := make([]*Gap, 0, 1000)
+// 	cs := make(map[string]*File)
+// 	for f := range files {
+// 		if !f.Valid() && !keep {
+// 			continue
+// 		}
+// 		n := by(f)
+// 		if p, ok := cs[n]; ok && f.Sequence > p.Sequence {
+// 			g := f.Compare(p)
+// 			if (g != nil && g.Count() > 0) && (interval == 0 || g.Duration() >= interval) {
+// 				rs = append(rs, g)
+// 			}
+// 		}
+// 		cs[n] = f
+// 	}
+// 	return rs
+// }
 
 func reportCheckResults(rs []*Gap, format string, toGPS bool) error {
 	if len(rs) == 0 {
