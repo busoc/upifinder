@@ -72,9 +72,6 @@ func findFiles(dir, upi string, queue chan<- *File) error {
 		if i.IsDir() {
 			return nil
 		}
-		if n := i.Name(); upi != "" && strings.Index(n, upi) < 0 {
-			return nil
-		}
 		switch e := filepath.Ext(p); e {
 		case ".xml":
 			// ignore xml files
@@ -111,6 +108,9 @@ func findFiles(dir, upi string, queue chan<- *File) error {
 			}
 			return s.Err()
 		default:
+			if n := i.Name(); upi != "" && strings.Index(n, upi) < 0 {
+				return nil
+			}
 			f, err := parseFilename(p, upi, i.Size())
 			if err != nil {
 				return err

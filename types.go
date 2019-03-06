@@ -38,7 +38,7 @@ type Gap struct {
 }
 
 func (g *Gap) Count() uint32 {
-	return g.After - g.Before
+	return (g.After - g.Before) - 1
 }
 
 func (g *Gap) Duration() time.Duration {
@@ -254,7 +254,7 @@ type File struct {
 }
 
 func (f *File) Compare(p *File) *Gap {
-	if p == nil || f.Sequence == p.Sequence+1 {
+	if p == nil || f.String() != p.String() || f.Sequence == p.Sequence+1 {
 		return nil
 	}
 	if p.AcqTime.After(f.AcqTime) {

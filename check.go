@@ -15,7 +15,7 @@ import (
 )
 
 var checkSourceCommand = &cli.Command{
-	Usage: "check-src [-d] [-s] [-e] [-i] [-f] [-g] <archive,...>",
+	Usage: "check-src [-d] [-s] [-e] [-i] [-f] [-g] [-k] <archive,...>",
 	Short: "provide the number of missing files in the archive by sources",
 	Run:   runCheckSource,
 	Desc: `"check-src" traverse the Hadock archive to find gap(s) of files by sources.
@@ -36,11 +36,12 @@ Options:
   -d DAYS    only count files created during a period of DAYS
   -i TIME    only consider gap with at least TIME duration
   -f FORMAT  print the results in the given format ("", csv, column)
+  -k         keep invalid files in the count of gaps
   -g         print the ACQTIME as seconds elapsed since GPS epoch`,
 }
 
 var checkUPICommand = &cli.Command{
-	Usage: "check-upi [-d] [-s] [-e] [-u] [-i] [-f] [-g] <archive,...>",
+	Usage: "check-upi [-d] [-s] [-e] [-u] [-i] [-f] [-g] [-k] <archive,...>",
 	Alias: []string{"check"},
 	Short: "provide the number of missing files in the archive by UPI",
 	Run:   runCheckUPI,
@@ -66,6 +67,7 @@ Options:
   -d DAYS    only count files created during a period of DAYS
   -i TIME    only consider gap with at least TIME duration
   -f FORMAT  print the results in the given format ("", csv, column)
+  -k         keep invalid files in the count of gaps
   -g         print the ACQTIME as seconds elapsed since GPS epoch`,
 }
 
@@ -77,6 +79,7 @@ func runCheckSource(cmd *cli.Command, args []string) error {
 	period := cmd.Flag.Int("d", 0, "period")
 	interval := cmd.Flag.Duration("i", 0, "interval")
 	format := cmd.Flag.String("f", "", "format")
+	keep := cmd.Flag.Bool("k", false, "keep invalid files")
 	toGPS := cmd.Flag.Bool("g", false, "convert time to GPS")
 
 	if err := cmd.Flag.Parse(args); err != nil {
@@ -91,7 +94,7 @@ func runCheckSource(cmd *cli.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	rs := checkFiles(walkFiles(paths, "", 1), *interval, bySource)
+	rs := checkFiles(walkFiles(paths, "", 1), *interval, *keep, bySource)
 	return reportCheckResults(rs, *format, *toGPS)
 }
 
@@ -105,6 +108,7 @@ func runCheckUPI(cmd *cli.Command, args []string) error {
 	interval := cmd.Flag.Duration("i", 0, "interval")
 	format := cmd.Flag.String("f", "", "format")
 	toGPS := cmd.Flag.Bool("g", false, "convert time to GPS")
+	keep := cmd.Flag.Bool("k", false, "keep invalid files")
 
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
@@ -118,14 +122,17 @@ func runCheckUPI(cmd *cli.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	rs := checkFiles(walkFiles(paths, *upi, 1), *interval, byUPI)
+	rs := checkFiles(walkFiles(paths, *upi, 1), *interval, *keep, byUPI)
 	return reportCheckResults(rs, *format, *toGPS)
 }
 
-func checkFiles(files <-chan *File, interval time.Duration, by ByFunc) []*Gap {
+func checkFiles(files <-chan *File, interval time.Duration, keep bool, by ByFunc) []*Gap {
 	rs := make([]*Gap, 0, 1000)
 	cs := make(map[string]*File)
 	for f := range files {
+		if !f.Valid() && !keep {
+			continue
+		}
 		n := by(f)
 		if p, ok := cs[n]; ok && f.Sequence > p.Sequence {
 			g := f.Compare(p)
