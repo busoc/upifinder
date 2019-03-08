@@ -106,75 +106,56 @@ func (c *Coze) Update(f *File) {
 }
 
 func (c *Coze) Seen(v uint32) bool {
-	n := len(c.seen)
-	if n == 0 {
-		c.seen = append(c.seen, single(v))
-		return false
+	s, ok := inRanges(c.seen, v)
+	if !ok {
+		c.seen = s
 	}
-	ix := sort.Search(n, func(i int) bool {
-		return c.seen[i].Last >= v
-	})
-	if ix >= n {
-		if d := v - c.seen[n-1].Last; d == 1 {
-			c.seen[n-1].Last = v
-		} else {
-			c.seen = append(c.seen, single(v))
-		}
-		return false
-	}
-	if c.seen[ix].Has(v) {
-		return true
-	}
-	if d := c.seen[ix].First - v; d == 1 {
-		c.seen[ix].First = v
-		if ix > 0 {
-			if d := v - c.seen[ix-1].Last; d == 1 {
-				c.seen[ix].First = c.seen[ix-1].First
-				c.seen = append(c.seen[:ix-1], c.seen[ix:]...)
-			}
-		}
-		return false
-	}
-	if ix == 0 {
-		c.seen = append([]*Range{single(v)}, c.seen...)
-		return false
-	} else {
-		if d := v - c.seen[ix-1].Last; d == 1 {
-			c.seen[ix-1].Last = v
-		} else {
-			c.seen = append(c.seen[:ix], append([]*Range{single(v)}, c.seen[ix:]...)...)
-		}
-		return false
-	}
-	return true
+	return ok
 }
 
-// func (c *Coze) Seen(s uint32) bool {
-// 	_, ok := c.seen[s]
-// 	if !ok {
-// 		c.seen[s] = struct{}{}
-// 	}
-// 	return ok
-// }
-
-// func (c *Coze) Seen(s uint32) bool {
-// 	if len(c.seen) == 0 {
-// 		c.seen = append(c.seen, s)
-// 		return false
-// 	}
-//   ix := sort.Search(len(c.seen), func(i int) bool {
-//     return s >= c.seen[i]
-//   })
-//   if ix < len(c.seen) && c.seen[ix] == s {
-//     return true
-//   }
-// 	if ix == len(c.seen)-1 {
-// 		c.seen = append(c.seen, s)
-// 	} else {
-// 		c.seen = append(c.seen[:ix], append([]uint32{s}, c.seen[ix:]...)...)
-// 	}
-//   return false
-// }
+func inRanges(seen []*Range, v uint32) ([]*Range, bool) {
+	n := len(seen)
+	if n == 0 {
+		seen = append(seen, single(v))
+		return seen, false
+	}
+	ix := sort.Search(n, func(i int) bool {
+		return seen[i].Last >= v
+	})
+	if ix >= n {
+		if d := v - seen[n-1].Last; d == 1 {
+			seen[n-1].Last = v
+		} else {
+			seen = append(seen, single(v))
+		}
+		return seen, false
+	}
+	if seen[ix].Has(v) {
+		return seen, true
+	}
+	if d := seen[ix].First - v; d == 1 {
+		seen[ix].First = v
+		if ix > 0 {
+			if d := v - seen[ix-1].Last; d == 1 {
+				seen[ix].First = seen[ix-1].First
+				seen = append(seen[:ix-1], seen[ix:]...)
+			}
+		}
+		return seen, false
+	}
+	if ix == 0 {
+		seen = append([]*Range{single(v)}, seen...)
+		return seen, false
+	} else {
+		if d := v - seen[ix-1].Last; d == 1 {
+			seen[ix-1].Last = v
+		} else {
+			seen = append(seen[:ix], append([]*Range{single(v)}, seen[ix:]...)...)
+		}
+		return seen, false
+	}
+	return seen, true
+}
 
 func (c Coze) Ranges() []*Range {
 	return c.seen

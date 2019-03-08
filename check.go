@@ -59,7 +59,6 @@ func runCheck(cmd *cli.Command, args []string) error {
 	format := cmd.Flag.String("f", "", "format")
 	toGPS := cmd.Flag.Bool("g", false, "convert time to GPS")
 	keep := cmd.Flag.Bool("k", false, "keep invalid files")
-	all := cmd.Flag.Bool("a", false, "keep all gaps even when refilled")
 
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
@@ -82,38 +81,50 @@ func runCheck(cmd *cli.Command, args []string) error {
 	default:
 		return fmt.Errorf("unsupported %s", *by)
 	}
-	rs := checkFiles(walkFiles(paths, *upi, 1), *interval, *keep, *all, byf)
+	rs := checkFiles(walkFiles(paths, *upi, 1), *interval, *keep, byf)
 	return reportCheckResults(rs, *format, *toGPS)
 }
 
-func checkFiles(files <-chan *File, interval time.Duration, keep, all bool, by ByFunc) []*Gap {
+func checkFiles(files <-chan *File, interval time.Duration, keep bool, by ByFunc) []*Gap {
 	rs := make(map[string][]*Gap)
 	cs := make(map[string]*File)
+	qs := make(map[string][]*Range)
 	for f := range files {
 		if !f.Valid() && !keep {
 			continue
 		}
 		n := by(f)
-		if p, ok := cs[n]; ok && f.Sequence > p.Sequence {
-			var skip bool
-			if !all {
-				if gs, ok := rs[n]; ok && len(gs) > 0 {
-					ix := sort.Search(len(gs), func(i int) bool {
-						return gs[i].After >= f.Sequence
-					})
-					if ix < len(gs) && f.Sequence-gs[ix].Before == 1 {
-						gs[ix].Before = f.Sequence
-						if d := gs[ix].After - gs[ix].Before; d == 1 {
-							if ix == len(gs)-1 {
-								rs[n] = gs[:ix]
-							} else {
-								rs[n] = append(gs[:ix], gs[ix+1:]...)
-							}
-						}
+		if s, ok := inRanges(qs[n], f.Sequence); !ok {
+			qs[n] = s
+		} else {
+			cs[n] = f
+			continue
+		}
+
+		var skip bool
+		if gs, ok := rs[n]; ok && len(gs) > 0 {
+			ix := sort.Search(len(gs), func(i int) bool {
+				return gs[i].After >= f.Sequence
+			})
+			if ix < len(gs) {
+				if d := f.Sequence - gs[ix].Before; d <= 1 {
+					gs[ix].Before, gs[ix].Starts = f.Sequence, f.AcqTime
+					if gs[ix].Count() == 0 {
+						rs[n] = append(gs[:ix], gs[ix+1:]...)
+					}
+					skip = true
+				} else {
+					if gs[ix].Before < f.Sequence {
+						g := *gs[ix]
+						g.Before, g.Starts = f.Sequence, f.AcqTime
+						gs[ix].After, gs[ix].Ends = f.Sequence, f.AcqTime
+						rs[n] = append(gs[:ix+1], append([]*Gap{&g}, gs[ix+1:]...)...)
 						skip = true
 					}
 				}
 			}
+		}
+		if p, ok := cs[n]; ok && f.Sequence > p.Sequence {
 			if !skip {
 				g := f.Compare(p)
 				if (g != nil && g.Count() > 0) && (interval == 0 || g.Duration() >= interval) {

@@ -59,7 +59,7 @@ func runPush(cmd *cli.Command, args []string) error {
 
 func pushCheck(paths []string, u url.URL, chunk int) error {
 	//report gaps
-	rs := checkFiles(walkFiles(paths, "", 1), 0, false, false, byUPI)
+	rs := checkFiles(walkFiles(paths, "", 1), 0, false, byUPI)
 	if len(rs) == 0 {
 		return nil
 	}
