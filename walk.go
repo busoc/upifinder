@@ -47,6 +47,7 @@ Options:
   -e END     only count files created before END
   -d DAYS    only count files created during a period of DAYS
   -f FORMAT  print the results in the given format ("", csv, column)
+  -z         discard UPI that have no missing files
 
 Examples:
 
@@ -74,6 +75,7 @@ func runWalk(cmd *cli.Command, args []string) error {
 	upi := cmd.Flag.String("u", "", "upi")
 	period := cmd.Flag.Int("d", 0, "period")
 	format := cmd.Flag.String("f", "", "format")
+	zero := cmd.Flag.Bool("z", false, "discard row with zero missing")
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
 	}
@@ -93,7 +95,7 @@ func runWalk(cmd *cli.Command, args []string) error {
 	}
 	switch f := strings.ToLower(*format); f {
 	case "column", "":
-		z := printWalkResults(os.Stdout, rs)
+		z := printWalkResults(os.Stdout, rs, *zero)
 
 		log.Println()
 		s := strings.TrimSpace(prettySize(z.Size))
@@ -102,6 +104,9 @@ func runWalk(cmd *cli.Command, args []string) error {
 		w := csv.NewWriter(os.Stdout)
 		defer w.Flush()
 		for n, c := range rs {
+			if *zero && c.Missing() == 0 {
+				continue
+			}
 			row := []string{
 				Transform(n),
 				strconv.FormatUint(c.Count, 10),
@@ -122,7 +127,7 @@ func runWalk(cmd *cli.Command, args []string) error {
 	return nil
 }
 
-func printWalkResults(ws io.Writer, rs map[string]*Coze) *Coze {
+func printWalkResults(ws io.Writer, rs map[string]*Coze, zero bool) *Coze {
 	const row = "%-s\t%d\t%d\t%s\t%d\t%3.2f%%\t%s\t%s\t%d\t%d\t%d"
 	w := tabwriter.NewWriter(ws, 16, 2, 4, ' ', 0)
 	defer w.Flush()
@@ -145,6 +150,10 @@ func printWalkResults(ws io.Writer, rs map[string]*Coze) *Coze {
 		z.Size += c.Size
 		z.Invalid += c.Invalid
 		z.Uniq += c.Uniq
+
+		if zero && c.Missing() == 0 {
+			continue
+		}
 
 		starts, ends := c.Starts.Format(time.RFC3339), c.Ends.Format(time.RFC3339)
 		first, last := c.Range()
