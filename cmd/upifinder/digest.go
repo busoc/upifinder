@@ -3,7 +3,7 @@ package main
 import (
 	"archive/tar"
 	"bytes"
-	"crypto/md5"
+	// "crypto/md5"
 	"encoding/binary"
 	"io"
 	"log"
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/midbel/cli"
+	"github.com/midbel/xxh"
 )
 
 var (
@@ -67,7 +68,7 @@ func digestReader(r io.Reader) (*Digest, error) {
 	if _, err := io.CopyN(&buffer, r, skipBytes(d.Magic[:])); err != nil {
 		return nil, err
 	}
-	digest := md5.New()
+	digest := xxh.New64(0)
 	if _, err := io.Copy(digest, r); err != nil {
 		return nil, err
 	}
