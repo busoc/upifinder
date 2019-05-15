@@ -82,7 +82,7 @@ const (
 	filesReport  = "files"
 )
 
-const MaxBodySize = 4 << 20
+const MaxBodySize = 32 << 20
 
 const DefaultInterval = time.Duration(24*30) * time.Hour
 
