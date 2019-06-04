@@ -111,7 +111,7 @@ func runWalk(cmd *cli.Command, args []string) error {
 				Transform(n),
 				strconv.FormatUint(c.Count, 10),
 				strconv.FormatUint(c.Uniq, 10),
-				strconv.FormatUint(c.Size>>20, 10),
+				strconv.FormatUint(c.Size, 10),
 				strconv.FormatUint(c.Invalid, 10),
 				strconv.FormatFloat(c.Corrupted(), 'f', -1, 64),
 				strconv.FormatUint(c.Missing(), 10),
