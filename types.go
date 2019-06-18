@@ -165,7 +165,7 @@ func (c Coze) Corrupted() float64 {
 	if c.Count == 0 || c.Invalid == 0 {
 		return 0
 	}
-	return 100 * (float64(c.Invalid) / float64(c.Count))
+	return float64(c.Invalid) / float64(c.Count)
 }
 
 type ByFunc func(*File) string

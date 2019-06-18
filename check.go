@@ -89,7 +89,7 @@ func reportCheckResults(gs []*Gap, csv, gps bool) {
 	for i := 0; i < len(gs); i++ {
 		g := gs[i]
 
-		line.AppendString(Transform(g.UPI), 16, linewriter.AlignRight)
+		line.AppendString(Transform(g.UPI), 24, linewriter.AlignLeft)
 		if gps {
 			line.AppendUint(timeToGPS(g.Starts), 10, linewriter.AlignRight)
 			line.AppendUint(timeToGPS(g.Ends), 10, linewriter.AlignRight)

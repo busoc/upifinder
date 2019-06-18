@@ -105,7 +105,7 @@ func reportWalkResults(rs map[string]*Coze, csv, zero bool) {
 
 		first, last := c.Range()
 
-		line.AppendString(Transform(c.UPI), 16, linewriter.AlignRight)
+		line.AppendString(Transform(c.UPI), 24, linewriter.AlignLeft)
 		line.AppendUint(c.Count, 10, linewriter.AlignRight)
 		line.AppendUint(c.Uniq, 10, linewriter.AlignRight)
 		if csv {
