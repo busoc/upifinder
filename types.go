@@ -79,9 +79,7 @@ type Coze struct {
 	First uint32 `json:"first" xml:"first"`
 	Last  uint32 `json:"last" xml:"last"`
 
-	// seen []uint32
 	seen []*Range
-	// seen map[uint32]struct{}
 }
 
 func (c *Coze) Update(f *File) {
@@ -111,50 +109,6 @@ func (c *Coze) Seen(v uint32) bool {
 		c.seen = s
 	}
 	return ok
-}
-
-func inRanges(seen []*Range, v uint32) ([]*Range, bool) {
-	n := len(seen)
-	if n == 0 {
-		seen = append(seen, single(v))
-		return seen, false
-	}
-	ix := sort.Search(n, func(i int) bool {
-		return seen[i].Last >= v
-	})
-	if ix >= n {
-		if d := v - seen[n-1].Last; d == 1 {
-			seen[n-1].Last = v
-		} else {
-			seen = append(seen, single(v))
-		}
-		return seen, false
-	}
-	if seen[ix].Has(v) {
-		return seen, true
-	}
-	if d := seen[ix].First - v; d == 1 {
-		seen[ix].First = v
-		if ix > 0 {
-			if d := v - seen[ix-1].Last; d == 1 {
-				seen[ix].First = seen[ix-1].First
-				seen = append(seen[:ix-1], seen[ix:]...)
-			}
-		}
-		return seen, false
-	}
-	if ix == 0 {
-		seen = append([]*Range{single(v)}, seen...)
-		return seen, false
-	} else {
-		if d := v - seen[ix-1].Last; d == 1 {
-			seen[ix-1].Last = v
-		} else {
-			seen = append(seen[:ix], append([]*Range{single(v)}, seen[ix:]...)...)
-		}
-		return seen, false
-	}
-	return seen, true
 }
 
 func (c Coze) Ranges() []*Range {
@@ -397,4 +351,48 @@ func parseTime(s string) (time.Time, error) {
 		}
 	}
 	return t, fmt.Errorf("no suitable format found for %q", s)
+}
+
+func inRanges(seen []*Range, v uint32) ([]*Range, bool) {
+	n := len(seen)
+	if n == 0 {
+		seen = append(seen, single(v))
+		return seen, false
+	}
+	ix := sort.Search(n, func(i int) bool {
+		return seen[i].Last >= v
+	})
+	if ix >= n {
+		if d := v - seen[n-1].Last; d == 1 {
+			seen[n-1].Last = v
+		} else {
+			seen = append(seen, single(v))
+		}
+		return seen, false
+	}
+	if seen[ix].Has(v) {
+		return seen, true
+	}
+	if d := seen[ix].First - v; d == 1 {
+		seen[ix].First = v
+		if ix > 0 {
+			if d := v - seen[ix-1].Last; d == 1 {
+				seen[ix].First = seen[ix-1].First
+				seen = append(seen[:ix-1], seen[ix:]...)
+			}
+		}
+		return seen, false
+	}
+	if ix == 0 {
+		seen = append([]*Range{single(v)}, seen...)
+		return seen, false
+	} else {
+		if d := v - seen[ix-1].Last; d == 1 {
+			seen[ix-1].Last = v
+		} else {
+			seen = append(seen[:ix], append([]*Range{single(v)}, seen[ix:]...)...)
+		}
+		return seen, false
+	}
+	return seen, true
 }

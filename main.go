@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/midbel/cli"
+	"github.com/midbel/linewriter"
 )
 
 const (
@@ -47,7 +48,6 @@ var commands = []*cli.Command{
 	srvCommand,
 	walkCommand,
 	pushCommand,
-	inspectCommand,
 }
 
 func init() {
@@ -83,4 +83,17 @@ func main() {
 	if err := cli.Run(commands, usage, nil); err != nil {
 		log.Fatalln(err)
 	}
+}
+
+func Line(csv bool) *linewriter.Writer {
+	var options []linewriter.Option
+	if csv {
+		options = append(options, linewriter.AsCSV(true))
+	} else {
+		options = []linewriter.Option{
+			linewriter.WithPadding([]byte(" ")),
+			linewriter.WithSeparator([]byte("|")),
+		}
+	}
+	return linewriter.NewWriter(4096, options...)
 }

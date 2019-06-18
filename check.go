@@ -1,22 +1,19 @@
 package main
 
 import (
-	"encoding/csv"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/midbel/cli"
+	"github.com/midbel/linewriter"
 )
 
 var checkCommand = &cli.Command{
-	Usage: "check-upi [-b] [-d] [-s] [-e] [-u] [-i] [-f] [-g] [-k] <archive,...>",
+	Usage: "check-upi [-b] [-d] [-s] [-e] [-u] [-i] [-c] [-g] [-k] <archive,...>",
 	Alias: []string{"check"},
 	Short: "provide the number of missing files in the archive by UPI",
 	Run:   runCheck,
@@ -42,7 +39,7 @@ Options:
   -e END     only count files created before END
   -d DAYS    only count files created during a period of DAYS
   -i TIME    only consider gap with at least TIME duration
-  -f FORMAT  print the results in the given format ("", csv, column)
+  -c         print the results as csv
   -a         keep all gaps even when a later playback/replay refill those
   -k         keep invalid files in the count of gaps
   -g         print the ACQTIME as seconds elapsed since GPS epoch`,
@@ -56,7 +53,7 @@ func runCheck(cmd *cli.Command, args []string) error {
 	upi := cmd.Flag.String("u", "", "upi")
 	period := cmd.Flag.Int("d", 0, "period")
 	interval := cmd.Flag.Duration("i", 0, "interval")
-	format := cmd.Flag.String("f", "", "format")
+	csv := cmd.Flag.Bool("c", false, "csv")
 	toGPS := cmd.Flag.Bool("g", false, "convert time to GPS")
 	keep := cmd.Flag.Bool("k", false, "keep invalid files")
 
@@ -76,13 +73,41 @@ func runCheck(cmd *cli.Command, args []string) error {
 	switch strings.ToLower(*by) {
 	case "upi", "":
 		byf = byUPI
-	case "source", "src":
+	case "source":
 		byf = bySource
 	default:
 		return fmt.Errorf("unsupported %s", *by)
 	}
-	rs := checkFiles(walkFiles(paths, *upi, 1), *interval, *keep, byf)
-	return reportCheckResults(rs, *format, *toGPS)
+	if rs := checkFiles(walkFiles(paths, *upi, 1), *interval, *keep, byf); len(rs) > 0 {
+		reportCheckResults(rs, *csv, *toGPS)
+	}
+	return nil
+}
+
+func reportCheckResults(gs []*Gap, csv, gps bool) {
+	line := Line(csv)
+	for i := 0; i < len(gs); i++ {
+		g := gs[i]
+
+		line.AppendString(Transform(g.UPI), 16, linewriter.AlignRight)
+		if gps {
+			line.AppendUint(timeToGPS(g.Starts), 10, linewriter.AlignRight)
+			line.AppendUint(timeToGPS(g.Ends), 10, linewriter.AlignRight)
+		} else {
+			line.AppendTime(g.Starts, time.RFC3339, linewriter.AlignRight)
+			line.AppendTime(g.Ends, time.RFC3339, linewriter.AlignRight)
+		}
+		if elapsed := g.Duration(); csv {
+			line.AppendUint(uint64(elapsed.Seconds()), 10, linewriter.AlignRight)
+		} else {
+			line.AppendDuration(elapsed, 10, linewriter.AlignRight)
+		}
+		line.AppendUint(uint64(g.Before), 10, linewriter.AlignRight)
+		line.AppendUint(uint64(g.After), 10, linewriter.AlignRight)
+		line.AppendUint(uint64(g.Count()), 10, linewriter.AlignRight)
+
+		io.Copy(os.Stdout, line)
+	}
 }
 
 func checkFiles(files <-chan *File, interval time.Duration, keep bool, by ByFunc) []*Gap {
@@ -141,102 +166,9 @@ func checkFiles(files <-chan *File, interval time.Duration, keep bool, by ByFunc
 	return gs
 }
 
-//
-// func checkFiles(files <-chan *File, interval time.Duration, keep bool, by ByFunc) []*Gap {
-// 	rs := make([]*Gap, 0, 1000)
-// 	cs := make(map[string]*File)
-// 	for f := range files {
-// 		if !f.Valid() && !keep {
-// 			continue
-// 		}
-// 		n := by(f)
-// 		if p, ok := cs[n]; ok && f.Sequence > p.Sequence {
-// 			g := f.Compare(p)
-// 			if (g != nil && g.Count() > 0) && (interval == 0 || g.Duration() >= interval) {
-// 				rs = append(rs, g)
-// 			}
-// 		}
-// 		cs[n] = f
-// 	}
-// 	return rs
-// }
-
-func reportCheckResults(rs []*Gap, format string, toGPS bool) error {
-	if len(rs) == 0 {
-		return nil
-	}
-	switch f := strings.ToLower(format); f {
-	case "column", "":
-		count, delta := printCheckColumns(os.Stdout, rs, toGPS)
-
-		log.Println()
-		log.Printf("%d missing files (%s)", count, delta)
-	case "csv":
-		return printCheckValues(os.Stdout, rs, toGPS)
-	default:
-		return fmt.Errorf("unsupported format: %s", format)
-	}
-	return nil
-}
-
-func printCheckValues(ws io.Writer, rs []*Gap, gps bool) error {
-	w := csv.NewWriter(ws)
-	defer w.Flush()
-	for _, g := range rs {
-		var starts, ends string
-		if gps {
-			starts, ends = timeToGPS(g.Starts), timeToGPS(g.Ends)
-		} else {
-			starts, ends = g.Starts.Format(time.RFC3339), g.Ends.Format(time.RFC3339)
-		}
-		row := []string{
-			Transform(g.UPI),
-			starts,
-			ends,
-			g.Duration().String(),
-			strconv.FormatUint(uint64(g.Before), 10),
-			strconv.FormatUint(uint64(g.After), 10),
-			strconv.FormatUint(uint64(g.Count()), 10),
-		}
-		if err := w.Write(row); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func printCheckColumns(ws io.Writer, rs []*Gap, gps bool) (uint64, time.Duration) {
-	w := tabwriter.NewWriter(ws, 16, 2, 4, ' ', 0)
-	defer w.Flush()
-
-	logger := log.New(w, "", 0)
-	logger.Println("UPI\tStarts\tEnds\tDuration\tBefore\tAfter")
-
-	var (
-		total   uint64
-		elapsed time.Duration
-	)
-	for _, g := range rs {
-		delta := g.Duration()
-		count := g.Count()
-
-		elapsed += delta
-		total += uint64(count)
-
-		var starts, ends string
-		if gps {
-			starts, ends = timeToGPS(g.Starts), timeToGPS(g.Ends)
-		} else {
-			starts, ends = g.Starts.Format(time.RFC3339), g.Ends.Format(time.RFC3339)
-		}
-		logger.Printf("%-s\t%s\t%s\t%s\t%d\t%d\t%d", Transform(g.UPI), starts, ends, delta, g.Before, g.After, count)
-	}
-	return total, elapsed
-}
-
-func timeToGPS(t time.Time) string {
+func timeToGPS(t time.Time) uint64 {
 	left := t.Sub(UNIX).Seconds()
 	right := GPS.Sub(UNIX).Seconds()
 
-	return strconv.FormatFloat(left-right, 'f', 0, 64)
+	return uint64(left - right)
 }
