@@ -7,13 +7,16 @@ function runUPI {
   host=$4
   source=$(basename $datadir)
 
-  # if [[ ! -d $datadir ]]; then
-  #   echo "hello"
-  #   return 0
-  # fi
+  if [[ ! -d $datadir ]]; then
+    return 0
+  fi
+  mkdir -p $5
+  if [ $? -ne 0 ]; then {
+    return 125
+  }
 
   NOW=$SECONDS
-  echo "upifinder $cmd -c $datadir > $5/$host-upi-$cmd-$archive-$source.lst"
+  upifinder $cmd -c $datadir > $5/$host-upi-$cmd-$archive-$source.lst
   if [ $? -ne 0 ]; then
     exit 1
   fi
