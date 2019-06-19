@@ -29,6 +29,11 @@ if [ $? -ne 0 ]; then
   echo "upifinder not found in $PATH"
   exit 123
 fi
+which parallel &> /dev/null
+if [ $? -ne 0 ]; then
+  echo "parallel not found in $PATH"
+  exit 123
+fi
 
 HOST=$(hostname)
 ARCDIR=$PWD
