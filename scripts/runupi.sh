@@ -1,41 +1,30 @@
 #! /bin/bash
 
-function runUPI {
-  datadir=$(realpath $1)
+runUPI() {
+  datadir=$(/usr/bin/realpath $1)
   cmd=$2
   archive=$3
   host=$4
-  source=$(basename $datadir)
-
+  source=$(/usr/bin/basename $datadir)
+  #
   if [[ ! -d $datadir ]]; then
     return 0
   fi
-  mkdir -p $5
-  if [ $? -ne 0 ]; then {
+  /bin/mkdir -p $5
+  if [ $? -ne 0 ]; then
     return 125
-  }
+  fi
 
   NOW=$SECONDS
-  upifinder $cmd -c $datadir > $5/$host-upi-$cmd-$archive-$source.lst
+  /usr/bin/upifinder $cmd -c $datadir > $5/$host-upi-$cmd-$archive-$source.lst
   if [ $? -ne 0 ]; then
     exit 1
   fi
   elapsed=$((SECONDS-NOW))
-  echo "$elapsed seconds - $(du -sh $datadir)"
+  /bin/echo "$elapsed seconds - $(/usr/bin/du -sh $datadir)"
 }
 
-which upifinder &> /dev/null
-if [ $? -ne 0 ]; then
-  echo "upifinder not found in $PATH"
-  exit 123
-fi
-which parallel &> /dev/null
-if [ $? -ne 0 ]; then
-  echo "parallel not found in $PATH"
-  exit 123
-fi
-
-HOST=$(hostname)
+HOST=$(/bin/hostname)
 ARCDIR=$PWD
 DATDIR=$PWD
 WHERE="main"
@@ -54,49 +43,59 @@ while getopts :a:n:d:h:j: OPT; do
       ;;
     a)
       if [[ ! -d $OPTARG ]]; then
-        echo "$OPTARG: not a directory"
+        /bin/echo "$OPTARG: not a directory"
         exit 124
       fi
       ARCDIR=$OPTARG
       ;;
     d)
       DATDIR=$OPTARG
-      mkdir -p $DATDIR
+      /bin/mkdir -p $DATDIR
       if [ $? -ne 0 ]; then
-        echo "fail to create directory $DATDIR"
+        /bin/echo "fail to create directory $DATDIR"
         exit 124
       else
         if [[ ! -d $DATDIR ]] || [[ ! -w $DATDIR ]]; then
-          echo "$DATDIR: is not a writable directory"
+          /bin/echo "$DATDIR: is not a writable directory"
           exit 124
         fi
       fi
       ;;
     *)
-      echo "$(basename $0) traverse the full archive to run upifinder on each source in parallel"
-      echo ""
-      echo "options:"
-      echo ""
-      echo "-n NAME  archive name (default: $WHERE)"
-      echo "-a DIR   archive directory (default: $ARCDIR)"
-      echo "-d DIR   data directory (default: $DATDIR)"
-      echo "-h HOST  hostname (default: $HOST)"
-      echo "-j JOBS  number of parallel jobs (default: $JOBS)"
-      echo ""
-      echo "example:"
-      echo ""
-      echo "$ $(basename $0) n share -a /archives -d /var/www/html -h testme {39..41} 5"
-      echo ""
-      echo "usage: $(basename $0) [-j obs] [-a arcdir] [-n name] [-d datadir] [-h host] <source...>"
+      /bin/echo "$(/usr/bin/basename $0) traverse the full archive to run upifinder on each source in parallel"
+      /bin/echo ""
+      /bin/echo "options:"
+      /bin/echo ""
+      /bin/echo "-n NAME  archive name (default: $WHERE)"
+      /bin/echo "-a DIR   archive directory (default: $ARCDIR)"
+      /bin/echo "-d DIR   data directory (default: $DATDIR)"
+      /bin/echo "-h HOST  hostname (default: $HOST)"
+      /bin/echo "-j JOBS  number of parallel jobs (default: $JOBS)"
+      /bin/echo ""
+      /bin/echo "example:"
+      /bin/echo ""
+      /bin/echo "$ $(/usr/bin/basename $0) -n share -a /archives -d /var/www/html -h testme {39..41} 51"
+      /bin/echo ""
+      /bin/echo "usage: $(/usr/bin/basename $0) [-j obs] [-a arcdir] [-n name] [-d datadir] [-h host] <source...>"
       exit 1
       ;;
   esac
 done
 shift $(($OPTIND - 1))
 
+if [[ ! -x /usr/bin/upifinder ]]; then
+  /bin/echo "upifinder is not an executable"
+  exit 123
+fi
+
+if [[ ! -x /usr/bin/parallel ]]; then
+  /bin/echo "parallel is not an executable"
+  exit 123
+fi
+
 export -f runUPI
-parallel --will-cite -j $JOBS runUPI $ARCDIR/{1} {2} $WHERE $HOST $DATDIR ::: $@ ::: walk check
+/usr/bin/parallel --will-cite -j $JOBS runUPI $ARCDIR/{1} {2} $WHERE $HOST $DATDIR ::: $@ ::: walk check
 if [ $? -ne 0 ]; then
-  echo "unexpected error when running upifinder"
+  /bin/echo "unexpected error when running upifinder"
   exit 125
 fi
