@@ -1,11 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
-	"path/filepath"
-	"strings"
-	"text/template"
 	"time"
 
 	"github.com/midbel/cli"
@@ -61,28 +59,26 @@ func init() {
 func main() {
 	defer func() {
 		if err := recover(); err != nil {
-			log.Fatalf("unexpected error: %s", err)
+			fmt.Fprintf(os.Stderr, "unexpected error: %s\n", err)
 		}
 	}()
-	usage := func() {
-		data := struct {
-			Name     string
-			Commands []*cli.Command
-		}{
-			Name:     filepath.Base(os.Args[0]),
-			Commands: commands,
-		}
-		fs := map[string]interface{}{
-			"join": strings.Join,
-		}
-		t := template.Must(template.New("help").Funcs(fs).Parse(helpText))
-		t.Execute(os.Stderr, data)
-
-		os.Exit(2)
-	}
-	if err := cli.Run(commands, usage, nil); err != nil {
-		log.Fatalln(err)
-	}
+	// usage := func() {
+	// 	data := struct {
+	// 		Name     string
+	// 		Commands []*cli.Command
+	// 	}{
+	// 		Name:     filepath.Base(os.Args[0]),
+	// 		Commands: commands,
+	// 	}
+	// 	fs := map[string]interface{}{
+	// 		"join": strings.Join,
+	// 	}
+	// 	t := template.Must(template.New("help").Funcs(fs).Parse(helpText))
+	// 	t.Execute(os.Stderr, data)
+	//
+	// 	os.Exit(2)
+	// }
+	cli.RunAndExit(commands, cli.Usage("upifinder", helpText, commands))
 }
 
 func Line(csv bool) *linewriter.Writer {
