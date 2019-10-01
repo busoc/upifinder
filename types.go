@@ -84,7 +84,7 @@ type Coze struct {
 
 func (c *Coze) Update(f *File) {
 	c.Count++
-	c.Size += uint64(f.Size)
+	// c.Size += uint64(f.Size)
 	if c.Starts.IsZero() || c.Starts.Equal(f.AcqTime) || c.Starts.After(f.AcqTime) {
 		c.Starts = f.AcqTime
 		c.First = f.Sequence
@@ -97,6 +97,7 @@ func (c *Coze) Update(f *File) {
 	if f.Valid() {
 		if !c.Seen(f.Sequence) {
 			c.Uniq++
+			c.Size += uint64(f.Size)
 		}
 	} else {
 		c.Invalid++
