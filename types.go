@@ -233,7 +233,7 @@ func parseFilename(p, upi string, i int64) (*File, error) {
 		Source: strings.TrimLeft(ps[0], "0"),
 		Size:   i,
 	}
-	if s, err := strconv.ParseInt(f.Source, 16, 8); err != nil {
+	if s, err := strconv.ParseInt(f.Source, 16, 64); err != nil {
 		return nil, err
 	} else {
 		var origins []int
@@ -271,7 +271,7 @@ func parseFilename(p, upi string, i int64) (*File, error) {
 
 var (
 	OriImages   = []int{0x33, 0x34, 0x37, 0x38, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47}
-	OriSciences = []int{0x35, 0x36, 0x39, 0x40, 0x41, 0x51}
+	OriSciences = []int{0x35, 0x36, 0x39, 0x40, 0x41, 0x51, 0x90}
 )
 
 func acceptOrigin(o int, origins []int) bool {
