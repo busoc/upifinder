@@ -1,22 +1,18 @@
 package main
 
 import (
-	"encoding/csv"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"sort"
-	"strconv"
-	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/midbel/cli"
+	"github.com/midbel/linewriter"
 )
 
 var walkCommand = &cli.Command{
-	Usage: "walk [-d] [-s] [-e] [-u] [-f] <archive,...>",
+	Usage: "walk [-d] [-s] [-e] [-u] [-c] <archive,...>",
 	Short: "provide the number of files available in the archive",
 	Alias: []string{"scan", "report"},
 	Run:   runWalk,
@@ -46,7 +42,7 @@ Options:
   -s START   only count files created after START
   -e END     only count files created before END
   -d DAYS    only count files created during a period of DAYS
-  -f FORMAT  print the results in the given format ("", csv, column)
+  -c         print the results as csv
   -z         discard UPI that have no missing files
 
 Examples:
@@ -74,7 +70,7 @@ func runWalk(cmd *cli.Command, args []string) error {
 	cmd.Flag.Var(&end, "e", "end")
 	upi := cmd.Flag.String("u", "", "upi")
 	period := cmd.Flag.Int("d", 0, "period")
-	format := cmd.Flag.String("f", "", "format")
+	csv := cmd.Flag.Bool("c", false, "csv")
 	zero := cmd.Flag.Bool("z", false, "discard row with zero missing")
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
@@ -88,90 +84,49 @@ func runWalk(cmd *cli.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-
-	rs := countFiles(walkFiles(paths, *upi, 8))
-	if len(rs) == 0 {
-		return nil
+	if rs := countFiles(walkFiles(paths, *upi, 8)); len(rs) > 0 {
+		reportWalkResults(rs, *csv, *zero)
 	}
-	switch f := strings.ToLower(*format); f {
-	case "column", "":
-		z := printWalkResults(os.Stdout, rs, *zero)
-
-		log.Println()
-		s := strings.TrimSpace(prettySize(z.Size))
-		log.Printf("%d files found (%s) - uniq: %d - corrupted: %d (%3.2f%%)", z.Count, s, z.Uniq, z.Invalid, z.Corrupted())
-	case "csv":
-		w := csv.NewWriter(os.Stdout)
-		defer w.Flush()
-		for n, c := range rs {
-			if *zero && c.Missing() == 0 {
-				continue
-			}
-			row := []string{
-				Transform(n),
-				strconv.FormatUint(c.Count, 10),
-				strconv.FormatUint(c.Uniq, 10),
-				strconv.FormatUint(c.Size>>20, 10),
-				strconv.FormatUint(c.Invalid, 10),
-				strconv.FormatFloat(c.Corrupted(), 'f', -1, 64),
-				strconv.FormatUint(c.Missing(), 10),
-			}
-			if err := w.Write(row); err != nil {
-				return err
-			}
-		}
-	default:
-		return fmt.Errorf("unsupported format: %s", *format)
-	}
-
 	return nil
 }
 
-func printWalkResults(ws io.Writer, rs map[string]*Coze, zero bool) *Coze {
-	const row = "%-s\t%d\t%d\t%s\t%d\t%3.2f%%\t%s\t%s\t%d\t%d\t%d"
-	w := tabwriter.NewWriter(ws, 16, 2, 4, ' ', 0)
-	defer w.Flush()
-
-	logger := log.New(w, "", 0)
-	logger.Println("UPI\tFiles\tUniq\tSize\tInvalid\tRatio\tStarts\tEnds\tFirst\tLast\tMissing")
-
-	var (
-		z  Coze
-		vs []string
-	)
+func reportWalkResults(rs map[string]*Coze, csv, zero bool) {
+	vs := make([]string, 0, len(rs))
 	for n := range rs {
 		vs = append(vs, n)
 	}
 	sort.Strings(vs)
+	line := Line(csv)
 	for _, n := range vs {
 		c := rs[n]
-
-		z.Count += c.Count
-		z.Size += c.Size
-		z.Invalid += c.Invalid
-		z.Uniq += c.Uniq
-
 		if zero && c.Missing() == 0 {
 			continue
 		}
 
-		starts, ends := c.Starts.Format(time.RFC3339), c.Ends.Format(time.RFC3339)
 		first, last := c.Range()
-		logger.Printf(row,
-			Transform(c.UPI),
-			c.Count,
-			c.Uniq,
-			prettySize(c.Size),
-			c.Invalid,
-			c.Corrupted(),
-			starts,
-			ends,
-			first, // before was c.First
-			last,  // before was c.Last
-			c.Missing(),
-		)
+
+		line.AppendString(Transform(c.UPI), 24, linewriter.AlignLeft)
+		line.AppendUint(c.Count, 10, linewriter.AlignRight)
+		line.AppendUint(c.Uniq, 10, linewriter.AlignRight)
+		if csv {
+			line.AppendUint(c.Size, 10, linewriter.AlignRight)
+		} else {
+			line.AppendSize(int64(c.Size), 10, linewriter.AlignRight)
+		}
+		line.AppendUint(c.Invalid, 10, linewriter.AlignRight)
+		if ratio := c.Corrupted(); csv {
+			line.AppendFloat(ratio, 10, 2, linewriter.AlignRight)
+		} else {
+			line.AppendPercent(ratio, 10, 2, linewriter.AlignRight)
+		}
+		line.AppendTime(c.Starts, time.RFC3339, linewriter.AlignRight)
+		line.AppendTime(c.Ends, time.RFC3339, linewriter.AlignRight)
+		line.AppendUint(uint64(first), 10, linewriter.AlignRight)
+		line.AppendUint(uint64(last), 10, linewriter.AlignRight)
+		line.AppendUint(c.Missing(), 10, linewriter.AlignRight)
+
+		io.Copy(os.Stdout, line)
 	}
-	return &z
 }
 
 func countFiles(queue <-chan *File) map[string]*Coze {
@@ -187,30 +142,10 @@ func countFiles(queue <-chan *File) map[string]*Coze {
 				Last:   f.Sequence,
 				Starts: f.AcqTime,
 				Ends:   f.AcqTime,
-				// seen:   make(map[uint32]struct{}),
-				// seen: 	[]uint32{f.Sequence},
 			}
 			rs[k] = c
 		}
 		c.Update(f)
-		// c.Count++
-		// c.Size += uint64(f.Size)
-		// if c.Starts.IsZero() || c.Starts.After(f.AcqTime) {
-		// 	c.Starts = f.AcqTime
-		// 	c.First = f.Sequence
-		// }
-		// if c.Ends.IsZero() || c.Ends.Before(f.AcqTime) {
-		// 	c.Ends = f.AcqTime
-		// 	c.Last = f.Sequence
-		// }
-		//
-		// if f.Valid() {
-		// 	if !c.Seen(f.Sequence) {
-		// 		c.Uniq++
-		// 	}
-		// } else {
-		// 	c.Invalid++
-		// }
 	}
 	return rs
 }

@@ -79,14 +79,12 @@ type Coze struct {
 	First uint32 `json:"first" xml:"first"`
 	Last  uint32 `json:"last" xml:"last"`
 
-	// seen []uint32
 	seen []*Range
-	// seen map[uint32]struct{}
 }
 
 func (c *Coze) Update(f *File) {
 	c.Count++
-	c.Size += uint64(f.Size)
+	// c.Size += uint64(f.Size)
 	if c.Starts.IsZero() || c.Starts.Equal(f.AcqTime) || c.Starts.After(f.AcqTime) {
 		c.Starts = f.AcqTime
 		c.First = f.Sequence
@@ -99,6 +97,7 @@ func (c *Coze) Update(f *File) {
 	if f.Valid() {
 		if !c.Seen(f.Sequence) {
 			c.Uniq++
+			c.Size += uint64(f.Size)
 		}
 	} else {
 		c.Invalid++
@@ -111,50 +110,6 @@ func (c *Coze) Seen(v uint32) bool {
 		c.seen = s
 	}
 	return ok
-}
-
-func inRanges(seen []*Range, v uint32) ([]*Range, bool) {
-	n := len(seen)
-	if n == 0 {
-		seen = append(seen, single(v))
-		return seen, false
-	}
-	ix := sort.Search(n, func(i int) bool {
-		return seen[i].Last >= v
-	})
-	if ix >= n {
-		if d := v - seen[n-1].Last; d == 1 {
-			seen[n-1].Last = v
-		} else {
-			seen = append(seen, single(v))
-		}
-		return seen, false
-	}
-	if seen[ix].Has(v) {
-		return seen, true
-	}
-	if d := seen[ix].First - v; d == 1 {
-		seen[ix].First = v
-		if ix > 0 {
-			if d := v - seen[ix-1].Last; d == 1 {
-				seen[ix].First = seen[ix-1].First
-				seen = append(seen[:ix-1], seen[ix:]...)
-			}
-		}
-		return seen, false
-	}
-	if ix == 0 {
-		seen = append([]*Range{single(v)}, seen...)
-		return seen, false
-	} else {
-		if d := v - seen[ix-1].Last; d == 1 {
-			seen[ix-1].Last = v
-		} else {
-			seen = append(seen[:ix], append([]*Range{single(v)}, seen[ix:]...)...)
-		}
-		return seen, false
-	}
-	return seen, true
 }
 
 func (c Coze) Ranges() []*Range {
@@ -211,7 +166,7 @@ func (c Coze) Corrupted() float64 {
 	if c.Count == 0 || c.Invalid == 0 {
 		return 0
 	}
-	return 100 * (float64(c.Invalid) / float64(c.Count))
+	return float64(c.Invalid) / float64(c.Count)
 }
 
 type ByFunc func(*File) string
@@ -278,7 +233,7 @@ func parseFilename(p, upi string, i int64) (*File, error) {
 		Source: strings.TrimLeft(ps[0], "0"),
 		Size:   i,
 	}
-	if s, err := strconv.ParseInt(f.Source, 16, 8); err != nil {
+	if s, err := strconv.ParseInt(f.Source, 16, 64); err != nil {
 		return nil, err
 	} else {
 		var origins []int
@@ -316,7 +271,7 @@ func parseFilename(p, upi string, i int64) (*File, error) {
 
 var (
 	OriImages   = []int{0x33, 0x34, 0x37, 0x38, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47}
-	OriSciences = []int{0x35, 0x36, 0x39, 0x40, 0x41, 0x51}
+	OriSciences = []int{0x35, 0x36, 0x39, 0x40, 0x41, 0x51, 0x90}
 )
 
 func acceptOrigin(o int, origins []int) bool {
@@ -397,4 +352,48 @@ func parseTime(s string) (time.Time, error) {
 		}
 	}
 	return t, fmt.Errorf("no suitable format found for %q", s)
+}
+
+func inRanges(seen []*Range, v uint32) ([]*Range, bool) {
+	n := len(seen)
+	if n == 0 {
+		seen = append(seen, single(v))
+		return seen, false
+	}
+	ix := sort.Search(n, func(i int) bool {
+		return seen[i].Last >= v
+	})
+	if ix >= n {
+		if d := v - seen[n-1].Last; d == 1 {
+			seen[n-1].Last = v
+		} else {
+			seen = append(seen, single(v))
+		}
+		return seen, false
+	}
+	if seen[ix].Has(v) {
+		return seen, true
+	}
+	if d := seen[ix].First - v; d == 1 {
+		seen[ix].First = v
+		if ix > 0 {
+			if d := v - seen[ix-1].Last; d == 1 {
+				seen[ix].First = seen[ix-1].First
+				seen = append(seen[:ix-1], seen[ix:]...)
+			}
+		}
+		return seen, false
+	}
+	if ix == 0 {
+		seen = append([]*Range{single(v)}, seen...)
+		return seen, false
+	} else {
+		if d := v - seen[ix-1].Last; d == 1 {
+			seen[ix-1].Last = v
+		} else {
+			seen = append(seen[:ix], append([]*Range{single(v)}, seen[ix:]...)...)
+		}
+		return seen, false
+	}
+	return seen, true
 }

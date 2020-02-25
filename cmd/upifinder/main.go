@@ -1,14 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
-	"path/filepath"
-	"strings"
-	"text/template"
 	"time"
 
 	"github.com/midbel/cli"
+	"github.com/midbel/linewriter"
 )
 
 const (
@@ -44,10 +43,7 @@ Use {{.Name}} [command] -h for more information about its usage.
 var commands = []*cli.Command{
 	checkCommand,
 	digestCommand,
-	srvCommand,
 	walkCommand,
-	pushCommand,
-	inspectCommand,
 }
 
 func init() {
@@ -61,26 +57,37 @@ func init() {
 func main() {
 	defer func() {
 		if err := recover(); err != nil {
-			log.Fatalf("unexpected error: %s", err)
+			fmt.Fprintf(os.Stderr, "unexpected error: %s\n", err)
 		}
 	}()
-	usage := func() {
-		data := struct {
-			Name     string
-			Commands []*cli.Command
-		}{
-			Name:     filepath.Base(os.Args[0]),
-			Commands: commands,
-		}
-		fs := map[string]interface{}{
-			"join": strings.Join,
-		}
-		t := template.Must(template.New("help").Funcs(fs).Parse(helpText))
-		t.Execute(os.Stderr, data)
+	// usage := func() {
+	// 	data := struct {
+	// 		Name     string
+	// 		Commands []*cli.Command
+	// 	}{
+	// 		Name:     filepath.Base(os.Args[0]),
+	// 		Commands: commands,
+	// 	}
+	// 	fs := map[string]interface{}{
+	// 		"join": strings.Join,
+	// 	}
+	// 	t := template.Must(template.New("help").Funcs(fs).Parse(helpText))
+	// 	t.Execute(os.Stderr, data)
+	//
+	// 	os.Exit(2)
+	// }
+	cli.RunAndExit(commands, cli.Usage("upifinder", helpText, commands))
+}
 
-		os.Exit(2)
+func Line(csv bool) *linewriter.Writer {
+	var options []linewriter.Option
+	if csv {
+		options = append(options, linewriter.AsCSV(true))
+	} else {
+		options = []linewriter.Option{
+			linewriter.WithPadding([]byte(" ")),
+			linewriter.WithSeparator([]byte("|")),
+		}
 	}
-	if err := cli.Run(commands, usage, nil); err != nil {
-		log.Fatalln(err)
-	}
+	return linewriter.NewWriter(4096, options...)
 }

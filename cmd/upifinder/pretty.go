@@ -1,43 +1,9 @@
 package main
 
 import (
-	"fmt"
-	"math"
 	"strings"
 	"unicode"
 )
-
-const (
-	kilo = 1024
-	mega = kilo * kilo
-	giga = mega * kilo
-	tera = giga * kilo
-)
-
-func prettySize(s uint64) string {
-	f := float64(s)
-	var (
-		x, m float64
-		u, p string
-	)
-	if x, m = f/tera, math.Mod(f, tera); x > 1.0 {
-		u = "TB"
-	} else if x, m = f/giga, math.Mod(f, giga); x > 1.0 {
-		u = "GB"
-	} else if x, m = f/mega, math.Mod(f, mega); x > 1.0 {
-		u = "MB"
-	} else if x, m = f/kilo, math.Mod(f, kilo); x > 1.0 {
-		u = "KB"
-	} else {
-		x, u = f, "B"
-	}
-	if m > 0 {
-		p = "%6.2f%s"
-	} else {
-		p = "%6.0f%s"
-	}
-	return fmt.Sprintf(p, x, u)
-}
 
 func Transform(upi string) string {
 	return strings.Map(func(r rune) rune {

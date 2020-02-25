@@ -3,15 +3,14 @@ package main
 import (
 	"archive/tar"
 	"bytes"
-	// "crypto/md5"
 	"encoding/binary"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/midbel/cli"
+	"github.com/midbel/linewriter"
 	"github.com/midbel/xxh"
 )
 
@@ -42,19 +41,28 @@ type Digest struct {
 }
 
 var digestCommand = &cli.Command{
-	Usage: "digest <datadir>",
+	Usage: "digest [-c] <datadir>",
 	Alias: []string{"sum", "cksum"},
 	Short: "compute the md5 checksum of all files under the given directory",
 	Run:   runDigest,
 }
 
 func runDigest(cmd *cli.Command, args []string) error {
+	csv := cmd.Flag.Bool("c", false, "csv")
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
 	}
+	line := Line(*csv)
 	for d := range retrPaths(cmd.Flag.Arg(0)) {
-		n := GPS.Add(time.Duration(d.Time)).Format("2006-01-02 15:04:05.000")
-		log.Printf("%s | %7d | %s | %x | %s", bytes.Trim(d.Magic[:], "\x00"), d.Sequence, n, d.Sum, d.File)
+		w := GPS.Add(time.Duration(d.Time))
+
+		line.AppendBytes(bytes.Trim(d.Magic[:], "\x00"), 4, linewriter.Text)
+		line.AppendUint(uint64(d.Sequence), 8, linewriter.AlignRight)
+		line.AppendTime(w, time.RFC3339, 0)
+		line.AppendBytes(d.Sum, 0, linewriter.Hex)
+		line.AppendString(d.File, 0, linewriter.AlignLeft)
+
+		io.Copy(os.Stdout, line)
 	}
 	return nil
 }
