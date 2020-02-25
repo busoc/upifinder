@@ -6,6 +6,12 @@ Its has three sub commands to:
 2. report the gaps in the archive
 3. report basic information about files available in the hadock archive
 
+upifinder can read files from the different locations that are supported by hadock:
+
+* the filesystem
+* tar archive
+* lst files. Even if this kind of files is not created by hadock, this kind of files is supposed to be a list of files generated with, eg, the find command
+
 ## upifinder walk
 
 The walk sub command provides the amount of files available in the hadock archive. It gives the following count per UPI:
